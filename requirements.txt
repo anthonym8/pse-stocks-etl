@@ -1,0 +1,7 @@
+pandas
+python-dotenv>=0.5.1
+bs4
+requests
+lxml
+psycopg2-binary
+SQLAlchemy
