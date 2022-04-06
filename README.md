@@ -23,7 +23,7 @@ Clone the project inside `$HOME`, then go inside the project folder.
 
 ```sh
 cd $HOME;
-git clone git@bitbucket.org:anthonyms/pse-stocks-etl.git;
+git clone https://github.com/r-mas/pse-stocks-etl.git;
 cd pse-stocks-etl
 ```
 
