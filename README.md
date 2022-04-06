@@ -72,7 +72,7 @@ crontab -e
 Create a cron job as follows:
 
 ```sh
-0 16 * * * cd $HOME/pse-stocks-etl; $HOME/miniconda3/envs/pse-stocks-etl; $HOME/miniconda3/envs/pse-stocks-etl/bin/python -m scripts.incremental;
+0 16 * * * cd $HOME/pse-stocks-etl; $HOME/miniconda3/envs/pse-stocks-etl/bin/python -m scripts.sync;
 ```
 
 ---
