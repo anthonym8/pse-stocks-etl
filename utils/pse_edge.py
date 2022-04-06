@@ -1,4 +1,4 @@
-"""Module for extracting investment market data for PSE stocks"""
+"""Module for extracting stocks data from PSE Edge"""
 
 # Author: Rey Anthony Masilang
 
@@ -151,7 +151,7 @@ def get_company_info(symbol):
 
         r = s.post(company_search_url, data=payload, headers=HEADERS)
 
-        soup = bs.BeautifulSoup(r.text, 'lxml')
+        soup = bs.BeautifulSoup(r.text, 'html5lib')
         table_elements = soup.findAll('td')
         
         # Compile company info

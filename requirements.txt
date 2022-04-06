@@ -1,7 +1,8 @@
-pandas
 python-dotenv>=0.5.1
+SQLAlchemy
+psycopg2-binary
+pandas
 bs4
 requests
+html5lib
 lxml
-psycopg2-binary
-SQLAlchemy
