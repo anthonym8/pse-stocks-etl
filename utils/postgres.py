@@ -13,9 +13,7 @@ from os import environ
 __all__ = [
     'read_sql_file',
     'template_query',
-    'query',
-    'list_running_queries',
-    'kill_query'
+    'query'
 ]
 
 
