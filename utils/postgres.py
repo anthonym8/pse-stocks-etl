@@ -8,6 +8,8 @@ from pandas.io import sql
 from psycopg2 import connect as db_connect
 from dotenv import load_dotenv
 from os import environ
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 
 
 __all__ = [
@@ -118,11 +120,14 @@ def query(stmt=None, sql_file=None, parameters=None,
         password=creds['db_password'],
         dbname=creds['db_name']
     )
+    
+    # Use SQLAlchemy to remove pandas warning
+    engine = create_engine('postgresql+psycopg2://', poolclass=StaticPool, creator= lambda: conn)
 
     if retrieve_result:
-        result = read_sql_query(stmt, conn)
+        result = read_sql_query(stmt, con=engine)
     else:
-        sql.execute(stmt, conn)
+        sql.execute(stmt, con=engine)
         result = True
         
     return result
