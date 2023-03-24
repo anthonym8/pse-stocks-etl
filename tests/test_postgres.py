@@ -1,6 +1,6 @@
 from pandas import DataFrame
-from utils.postgres import creds
-from utils.postgres import read_sql_file, template_query, query
+from src.utils.postgres import creds
+from src.utils.postgres import read_sql_file, template_query, query
 
     
 def test_db_endpoint_defined():

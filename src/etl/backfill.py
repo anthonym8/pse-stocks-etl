@@ -5,11 +5,12 @@
 
 import pandas as pd
 from datetime import datetime
-from utils.pse_edge import get_listed_companies, get_stock_data
-from utils.postgres import query
+from src.utils.pse_edge import get_listed_companies, get_stock_data
+from src.utils.postgres import query
 
 def get_ts():
-    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    """Return the current timestamp in string format."""
+    return datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
 
 
 # Extract complete list of companies
@@ -40,25 +41,16 @@ INSERT_STMT_TEMPLATE = r"""
 rows_to_insert = []
 for idx in range(n_symbols):
     symbol = companies_df.iloc[idx].loc['symbol']
-    company_name = companies_df.iloc[idx].loc['company_name']
+    company_name = companies_df.iloc[idx].loc['company_name'].replace('\'','\'\'')
     sector = companies_df.iloc[idx].loc['sector']
     subsector = companies_df.iloc[idx].loc['subsector']
     listing_date = companies_df.iloc[idx].loc['listing_date']
-    extracted_at = company_extract_ts
     
-    row_str = "('{}','{}','{}','{}','{}','{}')".format(
-        symbol, 
-        company_name.replace('\'','\'\''), 
-        sector, 
-        subsector, 
-        listing_date,
-        extracted_at
-    )
-    
+    row_str = f"('{symbol}','{company_name}','{sector}','{subsector}','{listing_date}','{company_extract_ts}')"
     rows_to_insert.append(row_str)
     
     if (len(rows_to_insert) == BATCH_SIZE) or (idx+1 == n_symbols):
-        print('  {} out of {}'.format(idx+1, n_symbols))
+        print(f'  {idx+1} out of {n_symbols}')
         stmt = INSERT_STMT_TEMPLATE.format(',\n           '.join(rows_to_insert))
         query(stmt=stmt, retrieve_result=False)
 
@@ -113,20 +105,11 @@ for idx in range(n_symbols):
             p_close = price_df.iloc[idy].loc['close']
             p_extracted_at = price_extract_ts
 
-            row_str = "('{}', '{}', {}, {}, {}, {}, '{}')".format(
-                p_symbol, 
-                p_date, 
-                p_open, 
-                p_high, 
-                p_low, 
-                p_close, 
-                p_extracted_at
-            )
-
+            row_str = f"('{p_symbol}', '{p_date}', {p_open}, {p_high}, {p_low}, {p_close}, '{p_extracted_at}')"
             rows_to_insert.append(row_str)
 
             if (len(rows_to_insert) == BATCH_SIZE) or (idy+1 == n_rows):
-                print('    {:6s}  |  {}  | {} out of {}'.format(symbol, p_date, idy+1, n_rows))
+                print(f'    {symbol:6s}  |  {p_date}  | {idy+1} out of {n_rows}')
                 stmt = INSERT_STMT_TEMPLATE.format(',\n           '.join(rows_to_insert))
                 query(stmt=stmt, retrieve_result=False)
 

@@ -1,5 +1,5 @@
 import pytest
-from utils.pse_edge import get_listed_companies, get_company_info, get_stock_data
+from src.utils.pse_edge import get_listed_companies, get_company_info, get_stock_data
 
 
 @pytest.fixture

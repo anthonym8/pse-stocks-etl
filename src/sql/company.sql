@@ -2,6 +2,8 @@ CREATE SCHEMA IF NOT EXISTS pse;
 
 DROP TABLE IF EXISTS pse.company;
 
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS pse.company (
 	  "symbol"         VARCHAR(10) NOT NULL PRIMARY KEY
 	, "company_name"   VARCHAR(100) NOT NULL

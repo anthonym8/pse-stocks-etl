@@ -23,7 +23,7 @@ Clone the project inside `$HOME`, then go inside the project folder.
 
 ```sh
 cd $HOME;
-git clone https://github.com/r-mas/pse-stocks-etl.git;
+git clone https://github.com/anthonym8/pse-stocks-etl.git;
 cd pse-stocks-etl
 ```
 
@@ -72,7 +72,7 @@ crontab -e
 Create a cron job as follows:
 
 ```sh
-0 16 * * * cd $HOME/pse-stocks-etl; $HOME/miniconda3/envs/pse-stocks-etl/bin/python -m scripts.sync;
+0 16 * * * cd $HOME/pse-stocks-etl; $HOME/miniconda3/envs/pse-stocks-etl/bin/python -m src.etl.sync;
 ```
 
 ---
@@ -86,7 +86,7 @@ Usage
 ```sh
 cd $HOME/pse-stocks-etl;
 conda activate pse-stocks-etl;
-python -m scripts.backfill;
+python -m src.etl.backfill;
 ```
 
 **Manual sync:**
@@ -94,7 +94,7 @@ python -m scripts.backfill;
 ```sh
 cd $HOME/pse-stocks-etl;
 conda activate pse-stocks-etl;
-python -m scripts.sync;
+python -m src.etl.sync;
 
 ```
 
@@ -111,11 +111,13 @@ Project Organization
 ├── requirements.txt     <- The requirements file for reproducing the python environment.
 ├── sample.env           <- Template for the .env file where DB credentials will be stored.
 │
-├── scripts
-│   ├── __init__.py      <- Makes scripts a Python module
-│   ├── backfill.py      <- Python script to backfill historical data completely.
-│   └── incremental.py   <- Main python script or syncing data from source to destination.
+├── src                  <- Contains source code files
+│   ├── etl
+│   │   ├── backfill.py  <- Python script to backfill historical data completely.
+│   │   └── sync.py      <- Main python script or syncing data from source to destination.
+│   │
+│   ├── sql              <- DDL statements for the destination tables in PostgreSQL.                 
+│   └── utils            <- Utility and helper functions
 │
-├── sql                  <- DDL statements for the destination tables in PostgreSQL.                 
 └── tests                <- Test scripts.                 
 ```

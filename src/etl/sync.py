@@ -5,8 +5,8 @@
 
 import pandas as pd
 from datetime import datetime, timedelta
-from utils.pse_edge import get_listed_companies, get_stock_data
-from utils.postgres import query
+from src.utils.pse_edge import get_listed_companies, get_stock_data
+from src.utils.postgres import query
 
 def get_ts():
     return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
