@@ -18,11 +18,11 @@ def test__get_listed_companies__result_count(pse_company_list):
     assert pse_company_list.shape[0] > 200
         
 def test__get_listed_companies__column_list(pse_company_list):
-    COLUMN_NAMES = ['symbol', 'company_name', 'sector', 'subsector', 'listing_date']
+    COLUMN_NAMES = ['symbol', 'company_name', 'sector', 'subsector', 'listing_date', 'extracted_at']
     assert pse_company_list.columns.tolist() == COLUMN_NAMES
     
 def test__get_listed_companies__column_types(pse_company_list):
-    COLUMN_TYPES = ['object','object','object','object','object']
+    COLUMN_TYPES = ['object','object','object','object','object','object']
     assert pse_company_list.dtypes.astype('str').tolist() == COLUMN_TYPES
     
 def test__get_company_info__key_list(sample_company_info):
