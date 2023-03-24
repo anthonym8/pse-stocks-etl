@@ -105,6 +105,7 @@ def get_listed_companies() -> pd.DataFrame:
     })
     companies_df['listing_date'] = pd.to_datetime(companies_df['listing_date'], utc=True).dt.strftime('%Y-%m-%d')
     companies_df['extracted_at'] = pd.to_datetime(companies_df['extracted_at'], utc=True).dt.strftime('%Y-%m-%d %H:%M:%S')
+    companies_df['company_name'] = companies_df['company_name'].str.replace('\'','\'\'')
     companies_df = companies_df[['symbol','company_name','sector','subsector','listing_date','extracted_at']]
     
     return companies_df
@@ -220,6 +221,7 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
         r = s.post(STOCK_DATA_URL, json=payload, headers=headers)
         
         chart_data = r.json()['chartData']
+        extracted_at = r.headers['Date']
         
         if len(chart_data) == 0:
             prices_df = pd.DataFrame(columns=['symbol','date','open','high','low','close'])
@@ -235,7 +237,8 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
                 'CLOSE':'close',
                 'CHART_DATE':'date'
             })
-            prices_df = prices_df[['symbol','date','open','high','low','close']]
             prices_df['date'] = pd.to_datetime(prices_df['date'], utc=True).dt.strftime('%Y-%m-%d')
+            prices_df['extracted_at'] = pd.to_datetime(extracted_at, utc=True).strftime('%Y-%m-%d %H:%M:%S')
+            prices_df = prices_df[['symbol','date','open','high','low','close','extracted_at']]
 
         return prices_df
