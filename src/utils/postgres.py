@@ -5,7 +5,6 @@
 
 from pandas import read_sql_query
 from pandas.io import sql
-from psycopg2 import connect as db_connect
 from dotenv import load_dotenv
 from os import environ
 from sqlalchemy import create_engine
@@ -22,13 +21,11 @@ __all__ = [
 # Prepare database credentials
 load_dotenv('.env')
 
-creds = {
-    "db_endpoint": environ.get('DATABASE_ENDPOINT'),
-    "db_username": environ.get('DATABASE_USERNAME'),
-    "db_password": environ.get('DATABASE_PASSWORD'),
-    "db_port": environ.get('DATABASE_PORT'),
-    "db_name": environ.get('DATABASE_NAME')
-}
+DB_HOST = environ.get('DATABASE_ENDPOINT')
+DB_PORT = environ.get('DATABASE_PORT')
+DB_NAME = environ.get('DATABASE_NAME')
+DB_USER = environ.get('DATABASE_USERNAME')
+DB_PASSWORD = environ.get('DATABASE_PASSWORD')
 
 
 def read_sql_file(sql_file):
@@ -76,8 +73,7 @@ def template_query(stmt, parameters):
     return stmt
 
 
-def query(stmt=None, sql_file=None, parameters=None,
-          retrieve_result=True):
+def query(stmt=None, sql_file=None, parameters=None, retrieve_result=True):
     """Executes a SQL command.
     
     Parameters
@@ -94,7 +90,7 @@ def query(stmt=None, sql_file=None, parameters=None,
         Dictionary of parameter-value pairs to substitute to the placeholders
         in the raw SQL statement.
                 
-    retrieve_results : bool, default True
+    retrieve_result : bool, default True
         Flag to retrieve query results or not.
                         
     Returns
@@ -111,23 +107,20 @@ def query(stmt=None, sql_file=None, parameters=None,
     # Template query as needed
     if parameters is not None:
         stmt = template_query(stmt, parameters)
-
-    # Create database connection
-    conn = db_connect(
-        host=creds['db_endpoint'],
-        port=creds['db_port'],
-        user=creds['db_username'],
-        password=creds['db_password'],
-        dbname=creds['db_name']
-    )
+        
+    # Establish a connection to the database using sqlalchemy
+    engine = create_engine(f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
+    conn = engine.connect()
     
-    # Use SQLAlchemy to remove pandas warning
-    engine = create_engine('postgresql+psycopg2://', poolclass=StaticPool, creator= lambda: conn)
-
+    # Execute the SQL command
     if retrieve_result:
-        result = read_sql_query(stmt, con=engine)
+        result = read_sql_query(stmt, conn)
     else:
-        sql.execute(stmt, con=engine)
+        conn.execute(stmt)
         result = True
+        
+    # Close the database connection
+    conn.close()
+    engine.dispose()
         
     return result

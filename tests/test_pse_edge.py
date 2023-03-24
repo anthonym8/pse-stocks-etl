@@ -47,11 +47,11 @@ def test__get_company_info__exact_output(sample_company_info):
     assert sample_company_info == EXPECTED_OUTPUT
 
 def test__get_stock_data__column_list(sample_stock_data_no_dates):
-    COLUMN_NAMES = ['symbol','date','open','high','low','close']
+    COLUMN_NAMES = ['symbol','date','open','high','low','close','extracted_at']
     assert sample_stock_data_no_dates.columns.tolist() == COLUMN_NAMES
     
 def test__get_stock_data__column_types(sample_stock_data_no_dates):
-    COLUMN_TYPES = ['object','object','float64','float64','float64','float64']
+    COLUMN_TYPES = ['object','object','float64','float64','float64','float64','object']
     assert sample_stock_data_no_dates.dtypes.astype('str').tolist() == COLUMN_TYPES
 
 def test__get_stock_data__result_count(sample_stock_data_no_dates):
@@ -71,4 +71,5 @@ def test__get_stock_data__with_dates__exact_output():
     }]
     
     actual_output = get_stock_data(SYMBOL, START_DATE, END_DATE)
+    actual_output = actual_output[['symbol','date','open','high','low','close']]
     assert actual_output.to_dict('records') == EXPECTED_OUTPUT
