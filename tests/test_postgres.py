@@ -1,22 +1,26 @@
 from pandas import DataFrame
-from src.utils.postgres import creds
+from dotenv import load_dotenv
+from os import environ
 from src.utils.postgres import read_sql_file, template_query, query
 
-    
+# Prepare database credentials
+load_dotenv('.env')
+
+
 def test_db_endpoint_defined():
-    assert creds['db_endpoint'] is not None
+    assert environ.get('DATABASE_ENDPOINT') is not None
     
 def test_db_username_defined():
-    assert creds['db_username'] is not None
+    assert environ.get('DATABASE_USERNAME') is not None
     
 def test_db_password_defined():
-    assert creds['db_password'] is not None
+    assert environ.get('DATABASE_PASSWORD') is not None
     
 def test_db_port_defined():
-    assert creds['db_port'] is not None
+    assert environ.get('DATABASE_PORT') is not None
     
 def test_db_name_defined():
-    assert creds['db_name'] is not None
+    assert environ.get('DATABASE_NAME') is not None
     
 def test_read_sql_file():
     sql_stmt = 'SELECT 1 AS col;'
