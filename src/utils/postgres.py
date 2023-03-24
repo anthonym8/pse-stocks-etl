@@ -119,7 +119,8 @@ def query(stmt=None, sql_file=None, parameters=None, retrieve_result=True):
         conn.execute(stmt)
         result = True
         
-    # Close the cursor and database connection
+    # Close the database connection
     conn.close()
+    engine.dispose()
         
     return result
