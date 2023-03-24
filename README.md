@@ -3,6 +3,9 @@ pse-stocks-etl
 
 ETL jobs for syncing PSE stocks data (PSE Edge) to a Postgres database.
 
+[![Build](https://github.com/anthonym8/pse-stocks-etl/actions/workflows/build.yml/badge.svg)](https://github.com/anthonym8/pse-stocks-etl/actions/workflows/build.yml)
+[![Tests](https://github.com/anthonym8/pse-stocks-etl/actions/workflows/test.yml/badge.svg)](https://github.com/anthonym8/pse-stocks-etl/actions/workflows/test.yml)
+
 ---
 
 
