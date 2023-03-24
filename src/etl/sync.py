@@ -189,14 +189,24 @@ def insert_price_data_to_db(df: pd.DataFrame, batch_size: int = 3000) -> None:
         rows_to_insert.append(row_str)
 
         if (len(rows_to_insert) == batch_size) or (idy+1 == n_rows):
-            print(f'  Inserted {n_rows} records.')
+            print(f'  Inserted {len(rows_to_insert)} records.')
             stmt = INSERT_STMT_TEMPLATE.format(tuples = ',\n           '.join(rows_to_insert))
             query(stmt=stmt, retrieve_result=False)
             rows_to_insert = []
             
             
-def sync_prices(companies_df : pd.DataFrame) -> None:
-    """Updates price data for all companies."""
+def sync_prices(companies_df : pd.DataFrame, lookback_days : int = 0) -> None:
+    """Updates price data for all companies.
+    
+    Parameters
+    ----------
+    companies_df : pandas.DataFrame
+        A DataFrame of PSE companies with their ticker symbols.
+    
+    lookback_days : int, default 0
+        The number of days in the past to re-extract price data for.
+    
+    """
 
     n_symbols = companies_df.shape[0]
     for idx in range(n_symbols):
@@ -204,7 +214,7 @@ def sync_prices(companies_df : pd.DataFrame) -> None:
         print(f'Updating price data:  {symbol:6s}  ({idx+1} out of {n_symbols})')
 
         # Extract price data
-        price_df = get_new_price_data(symbol)
+        price_df = get_new_price_data(symbol, lookback_days=lookback_days)
 
         # Insert to database
         n_rows = price_df.shape[0]
