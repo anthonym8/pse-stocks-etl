@@ -3,10 +3,13 @@
 # Author: Rey Anthony Masilang
 
 
-from src.etl.sync import sync_companies, sync_prices
+import pandas as pd
+from src.etl.sync import PSECompanies, sync_prices
 
 
 if __name__ == '__main__':
     
-    companies_df = sync_companies()
-    _ = sync_prices(companies_df, lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
+    pse_companies = PSECompanies()
+    pse_companies.sync_db()
+    
+    sync_prices(pse_companies.symbols, lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
