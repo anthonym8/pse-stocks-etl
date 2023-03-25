@@ -20,11 +20,11 @@ jobs:
       
     - name: Run sync job
       env:
-        DATABASE_ENDPOINT: ${{ secrets.DATABASE_ENDPOINT }}
-        DATABASE_USERNAME: ${{ secrets.DATABASE_USERNAME }}
-        DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
-        DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
-        DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+        DATABASE_ENDPOINT: ${{ secrets.PROD_DATABASE_ENDPOINT }}
+        DATABASE_USERNAME: ${{ secrets.PROD_DATABASE_USERNAME }}
+        DATABASE_PASSWORD: ${{ secrets.PROD_DATABASE_PASSWORD }}
+        DATABASE_PORT: ${{ secrets.PROD_DATABASE_PORT }}
+        DATABASE_NAME: ${{ secrets.PROD_DATABASE_NAME }}
       run: |
         docker run --name pse-stocks-etl \
           -e DATABASE_ENDPOINT=$DATABASE_ENDPOINT \
