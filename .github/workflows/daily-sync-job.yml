@@ -2,7 +2,7 @@ name: Daily Sync Job
 
 on:
   schedule:
-    - cron: '0 16 * * *' # Runs every day at midnight (UTC+8)
+    - cron: '0 22 * * *' # Runs every day at 6 AM (UTC+8)
   workflow_dispatch:
 
 jobs:
