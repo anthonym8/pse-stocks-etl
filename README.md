@@ -102,10 +102,11 @@ DATABASE_PORT=
 DATABASE_NAME=
 ```
 
-Create database tables by executing the DDL statements in these files:
-1. `src.sql.trigger_set_timestamp.sql`
-1. `src.sql.company.sql`
-1. `src.sql.daily_stock_price.sql`
+Initialize the database tables.
+
+```
+python -m src.db.init
+```
 
 ---
 
