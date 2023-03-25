@@ -1,4 +1,4 @@
-"""Module for extracting syncing market data for PSE stocks"""
+"""Module for syncing market data for PSE stocks"""
 
 # Author: Rey Anthony Masilang
 
@@ -8,6 +8,28 @@ from datetime import datetime, timedelta
 from src.utils.pse_edge import get_listed_companies, get_stock_data
 from src.utils.postgres import query
 
+
+class DatabasePriceTableFreshness:
+    """Contains the current price data freshness for all ticker symbols in the database"""
+    
+    def __init__(self):
+        self.refresh()
+        
+    def refresh(self):
+        """Fetches the current database state."""
+        stmt = f"""
+            SELECT symbol, max(date) AS latest_date
+            FROM pse.daily_stock_price
+            GROUP BY symbol;
+        """
+
+        df = query(stmt=stmt)
+        self.latest_dates = df.set_index('symbol').to_dict(orient='dict')['latest_date']
+        
+    def get_latest_date(self, symbol : str) -> datetime:
+        """Returns the latest price data point for a specified ticker symbol."""
+        return self.latest_dates.get(symbol, None)
+    
 
 def insert_companies_to_db(df: pd.DataFrame, batch_size: int = 100) -> None:
     """Inserts company records to database.
@@ -71,34 +93,6 @@ def sync_companies() -> pd.DataFrame:
     
     return companies_df
     
-
-def get_latest_date_from_db(symbol : str) -> str:
-    """Extracts the date of the latest price data point for a specified ticker symbol.
-    
-    Parameters
-    ----------
-    symbol : str
-        The ticker symbol of the company.
-        
-    Returns
-    -------
-    latest_date : str
-        The date of the latest price data available in the database.
-    
-    """
-
-    # Get latest data
-    stmt = f"""
-        SELECT max(date) AS latest_date
-        FROM pse.daily_stock_price
-        WHERE symbol = '{symbol}';
-    """
-
-    data = query(stmt=stmt)
-    latest_date = data.iloc[0].loc['latest_date']
-    
-    return latest_date
-
 
 def get_new_price_data(symbol: str, lookback_days : int = 0, freshness_days : int = 1) -> pd.DataFrame:
     """
@@ -195,30 +189,52 @@ def insert_price_data_to_db(df: pd.DataFrame, batch_size: int = 3000) -> None:
             rows_to_insert = []
             
             
-def sync_prices(companies_df : pd.DataFrame, lookback_days : int = 0) -> None:
+def sync_prices(companies_df : pd.DataFrame, lookback_days : int = 0, freshness_days : int = 1) -> None:
     """Updates price data for all companies.
     
     Parameters
     ----------
     companies_df : pandas.DataFrame
         A DataFrame of PSE companies with their ticker symbols.
-    
+        
     lookback_days : int, default 0
         The number of days in the past to re-extract price data for.
+        
+    freshness_days : int, default 1
+        The acceptable data delay in number of days. By default, this is set to 1
+        which means data for yesterday is the minimum acceptable value to consider
+        that the price data is already up-to-date.
     
     """
+    
+    db_state = DatabasePriceTableFreshness()
 
     n_symbols = companies_df.shape[0]
     for idx in range(n_symbols):
         symbol = companies_df.iloc[idx].loc['symbol']
         print(f'Updating price data:  {symbol:6s}  ({idx+1} out of {n_symbols})')
+        
+        target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
+        latest_date = db_state.get_latest_date(symbol)
 
-        # Extract price data
-        price_df = get_new_price_data(symbol, lookback_days=lookback_days)
+        # Skip data extraction if conditions are satisfied
+        if lookback_days==0 and latest_date==target_latest_date:
+            # Return empty data frame.
+            price_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
+            print('  Already up-to-date. Skipping.')
+
+        # Extract new price data
+        else:
+            if latest_date is not None: 
+                start_date = (latest_date + timedelta(days=1-lookback_days)).strftime('%Y-%m-%d')
+            else:
+                start_date = None
+
+            price_df = get_stock_data(symbol, start_date=start_date)
+            print(f'  Fetched {price_df.shape[0]} records.')
 
         # Insert to database
-        n_rows = price_df.shape[0]
-        if n_rows == 0:
+        if price_df.shape[0] == 0:
             print('  No new records. Skipping.')
         else:
             insert_price_data_to_db(price_df)
