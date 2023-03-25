@@ -1,12 +1,10 @@
-"""Module for extracting backfilling market data for PSE stocks"""
+"""Script for backfilling market data for PSE stocks"""
 
 # Author: Rey Anthony Masilang
 
 
-from src.etl.sync import sync_companies, sync_prices
+from src.etl.sync import backfill
 
 
 if __name__ == '__main__':
-    
-    companies_df = sync_companies()
-    _ = sync_prices(companies_df, lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
+    backfill()
