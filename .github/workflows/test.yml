@@ -21,11 +21,11 @@ jobs:
       
     - name: Run tests
       env:
-        DATABASE_ENDPOINT: ${{ secrets.DATABASE_ENDPOINT }}
-        DATABASE_USERNAME: ${{ secrets.DATABASE_USERNAME }}
-        DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
-        DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
-        DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+        DATABASE_ENDPOINT: ${{ secrets.TEST_DATABASE_ENDPOINT }}
+        DATABASE_USERNAME: ${{ secrets.TEST_DATABASE_USERNAME }}
+        DATABASE_PASSWORD: ${{ secrets.TEST_DATABASE_PASSWORD }}
+        DATABASE_PORT: ${{ secrets.TEST_DATABASE_PORT }}
+        DATABASE_NAME: ${{ secrets.TEST_DATABASE_NAME }}
       run: |
         docker run --name pse-stocks-etl \
           -e DATABASE_ENDPOINT=$DATABASE_ENDPOINT \
