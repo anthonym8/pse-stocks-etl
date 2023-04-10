@@ -1,7 +1,7 @@
 python-dotenv>=0.5.1
 SQLAlchemy==1.4.34
 psycopg2-binary
-pandas
+pandas==1.4.2
 bs4
 requests
 html5lib
