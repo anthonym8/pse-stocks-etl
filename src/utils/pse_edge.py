@@ -243,7 +243,7 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
                 prices_df = prices_df[['symbol','date','open','high','low','close','extracted_at']]
 
         except:
-            print(f'Failed to get company info from PSE Edge for: {symbol}.')
+            print('  Failed to get company info.')
             prices_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
         
         return prices_df
