@@ -200,45 +200,50 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
     
     
     with Session() as s:
-        company_info = get_company_info(symbol)
-        
-        # Impute dates
-        if start_date is None:
-            start_date = company_info['listing_date']
-        
-        if end_date is None:
-            end_date = datetime.now().strftime('%Y-%m-%d')
-
-        payload = {
-            'cmpy_id': company_info['company_id'],
-            'security_id': company_info['security_id'],
-            'startDate': pd.to_datetime(start_date, utc=True).strftime('%m-%d-%Y'),
-            'endDate': pd.to_datetime(end_date, utc=True).strftime('%m-%d-%Y'),
-        }
-        
-        headers = dict(STOCK_DATA_HEADERS)
-        headers['Referer'] = headers['Referer'].format(company_id=company_info['company_id'])
-        r = s.post(STOCK_DATA_URL, json=payload, headers=headers)
-        
-        chart_data = r.json()['chartData']
-        extracted_at = r.headers['Date']
-        
-        if len(chart_data) == 0:
-            prices_df = pd.DataFrame(columns=['symbol','date','open','high','low','close'])
+        try:
+            company_info = get_company_info(symbol)
             
-        else:
-            prices_df = pd.DataFrame(chart_data)
-            prices_df['symbol'] = symbol
-            prices_df['CHART_DATE'] = pd.to_datetime(prices_df['CHART_DATE'], utc=True)
-            prices_df = prices_df.rename(columns={
-                'OPEN':'open',
-                'HIGH':'high',
-                'LOW':'low',
-                'CLOSE':'close',
-                'CHART_DATE':'date'
-            })
-            prices_df['date'] = pd.to_datetime(prices_df['date'], utc=True).dt.strftime('%Y-%m-%d')
-            prices_df['extracted_at'] = pd.to_datetime(extracted_at, utc=True).strftime('%Y-%m-%d %H:%M:%S')
-            prices_df = prices_df[['symbol','date','open','high','low','close','extracted_at']]
+            # Impute dates
+            if start_date is None:
+                start_date = company_info['listing_date']
 
+            if end_date is None:
+                end_date = datetime.now().strftime('%Y-%m-%d')
+
+            payload = {
+                'cmpy_id': company_info['company_id'],
+                'security_id': company_info['security_id'],
+                'startDate': pd.to_datetime(start_date, utc=True).strftime('%m-%d-%Y'),
+                'endDate': pd.to_datetime(end_date, utc=True).strftime('%m-%d-%Y'),
+            }
+
+            headers = dict(STOCK_DATA_HEADERS)
+            headers['Referer'] = headers['Referer'].format(company_id=company_info['company_id'])
+            r = s.post(STOCK_DATA_URL, json=payload, headers=headers)
+
+            chart_data = r.json()['chartData']
+            extracted_at = r.headers['Date']
+
+            if len(chart_data) == 0:
+                prices_df = pd.DataFrame(columns=['symbol','date','open','high','low','close'])
+
+            else:
+                prices_df = pd.DataFrame(chart_data)
+                prices_df['symbol'] = symbol
+                prices_df['CHART_DATE'] = pd.to_datetime(prices_df['CHART_DATE'], utc=True)
+                prices_df = prices_df.rename(columns={
+                    'OPEN':'open',
+                    'HIGH':'high',
+                    'LOW':'low',
+                    'CLOSE':'close',
+                    'CHART_DATE':'date'
+                })
+                prices_df['date'] = pd.to_datetime(prices_df['date'], utc=True).dt.strftime('%Y-%m-%d')
+                prices_df['extracted_at'] = pd.to_datetime(extracted_at, utc=True).strftime('%Y-%m-%d %H:%M:%S')
+                prices_df = prices_df[['symbol','date','open','high','low','close','extracted_at']]
+
+        except:
+            print(f'Failed to get company info from PSE Edge for: {symbol}.')
+            prices_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
+        
         return prices_df
