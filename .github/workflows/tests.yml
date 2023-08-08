@@ -5,11 +5,11 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
 
-  build_and_test:
-
+  integration-tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,7 +18,7 @@ jobs:
 
     - name: Build Docker image
       run: docker build . --file Dockerfile --tag pse-stocks-etl
-      
+
     - name: Run tests
       env:
         DATABASE_ENDPOINT: ${{ secrets.TEST_DATABASE_ENDPOINT }}
@@ -33,4 +33,4 @@ jobs:
           -e DATABASE_PASSWORD=$DATABASE_PASSWORD \
           -e DATABASE_PORT=$DATABASE_PORT \
           -e DATABASE_NAME=$DATABASE_NAME \
-          pse-stocks-etl pytest
+          pse-stocks-etl sh -c "pytest tests/integration"

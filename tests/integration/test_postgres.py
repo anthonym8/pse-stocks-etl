@@ -24,7 +24,7 @@ def test_db_name_defined():
     
 def test_read_sql_file():
     sql_stmt = 'SELECT 1 AS col;'
-    assert sql_stmt == read_sql_file('tests/sample_sql_file.sql')
+    assert sql_stmt == read_sql_file('tests/integration/sample_sql_file.sql')
 
 def test_template_query():
     raw_stmt = """
@@ -59,7 +59,7 @@ def test_query_stmt():
     assert query(stmt).to_dict('records') == [{'col':1}]
     
 def test_query_sql_file():
-    stmt = read_sql_file('tests/sample_sql_file.sql')
+    stmt = read_sql_file('tests/integration/sample_sql_file.sql')
     assert query(stmt).to_dict('records') == [{'col':1}]
     
 def test_query_parameters():
