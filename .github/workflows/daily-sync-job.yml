@@ -5,15 +5,32 @@ on:
     - cron: '0 22 * * *' # Runs every day at 6 AM (UTC+8)
   workflow_dispatch:
 
+
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_REPOSITORY: ${{ secrets.DOCKERHUB_REPOSITORY }}
+
+
 jobs:
 
-  build_and_run:
-
+  sync_database:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+
+    - name: Log in to Docker Hub
+      env:
+        DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+      run: |
+        echo $DOCKERHUB_PASSWORD | docker login --username $DOCKERHUB_USERNAME --password-stdin 
+
+    - name: Pull Docker image
+      run: |
+        source version.env
+        echo "IMAGE_VERSION=$IMAGE_VERSION"
+        docker pull ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION
 
     - name: Build Docker image
       run: docker build . --file Dockerfile --tag pse-stocks-etl
@@ -26,11 +43,14 @@ jobs:
         DATABASE_PORT: ${{ secrets.PROD_DATABASE_PORT }}
         DATABASE_NAME: ${{ secrets.PROD_DATABASE_NAME }}
       run: |
+        source version.env
+        echo "IMAGE_VERSION=$IMAGE_VERSION"
         docker run --name pse-stocks-etl \
           -e DATABASE_ENDPOINT=$DATABASE_ENDPOINT \
           -e DATABASE_USERNAME=$DATABASE_USERNAME \
           -e DATABASE_PASSWORD=$DATABASE_PASSWORD \
           -e DATABASE_PORT=$DATABASE_PORT \
           -e DATABASE_NAME=$DATABASE_NAME \
-          pse-stocks-etl python -m src.etl.sync
+          ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION \
+          python -m src.etl.sync
 
