@@ -34,3 +34,31 @@ jobs:
           -e DATABASE_PORT=$DATABASE_PORT \
           -e DATABASE_NAME=$DATABASE_NAME \
           pse-stocks-etl sh -c "pytest tests/integration"
+
+
+  e2e-data-refresh-test-run:
+    runs-on: ubuntu-latest
+
+    steps:
+    
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Build Docker image
+      run: docker build . --file Dockerfile --tag pse-stocks-etl
+          
+    - name: Run sync job
+      env:
+        DATABASE_ENDPOINT: ${{ secrets.TEST_DATABASE_ENDPOINT }}
+        DATABASE_USERNAME: ${{ secrets.TEST_DATABASE_USERNAME }}
+        DATABASE_PASSWORD: ${{ secrets.TEST_DATABASE_PASSWORD }}
+        DATABASE_PORT: ${{ secrets.TEST_DATABASE_PORT }}
+        DATABASE_NAME: ${{ secrets.TEST_DATABASE_NAME }}
+      run: |
+        docker run --name pse-stocks-etl \
+          -e DATABASE_ENDPOINT=$DATABASE_ENDPOINT \
+          -e DATABASE_USERNAME=$DATABASE_USERNAME \
+          -e DATABASE_PASSWORD=$DATABASE_PASSWORD \
+          -e DATABASE_PORT=$DATABASE_PORT \
+          -e DATABASE_NAME=$DATABASE_NAME \
+          pse-stocks-etl python -m src.etl.sync
