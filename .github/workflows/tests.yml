@@ -36,7 +36,7 @@ jobs:
           pse-stocks-etl sh -c "pytest tests/integration"
 
 
- e2e-data-refresh-test-run:
+  e2e-data-refresh-test-run:
     runs-on: ubuntu-latest
 
     steps:
