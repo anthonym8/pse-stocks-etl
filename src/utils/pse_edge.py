@@ -243,7 +243,7 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
                 prices_df = prices_df[['symbol','date','open','high','low','close','extracted_at']]
 
         except:
-            print('  Failed to get company info.')
+            print(f'Failed to get company info for: {symbol}.')
             prices_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
         
         return prices_df
