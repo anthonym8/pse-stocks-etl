@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from src.utils.pse_edge import get_listed_companies, get_stock_data
 from src.utils.postgres import query
+from src.utils.multithreading import parallel_execute
 from typing import List
     
     
@@ -122,7 +123,7 @@ class DailyStockPriceDataset:
         query("DELETE FROM pse.daily_stock_price;", retrieve_result=False)
         self._refresh_metadata()
         
-    def _insert_price_data_to_db(self, df: pd.DataFrame, batch_size: int = 3000) -> None:
+    def _insert_price_data_to_db(self, df: pd.DataFrame, batch_size: int = 3000, verbose: bool = True) -> None:
         """Inserts price data records to the database.
 
         Parameters
@@ -132,6 +133,9 @@ class DailyStockPriceDataset:
 
         batch_size : int, default 100
             The number of records to insert at a time.
+            
+        verbose : bool, default True
+            Logs progress messages to console when set to True.
 
         Returns
         -------
@@ -165,13 +169,13 @@ class DailyStockPriceDataset:
             rows_to_insert.append(row_str)
 
             if (len(rows_to_insert) == batch_size) or (idy+1 == n_rows):
-                print(f'  Inserted {len(rows_to_insert)} records.')
+                if verbose: print(f'  Inserted {len(rows_to_insert)} records.')
                 stmt = INSERT_STMT_TEMPLATE.format(tuples = ',\n           '.join(rows_to_insert))
                 query(stmt=stmt, retrieve_result=False)
                 rows_to_insert = []
                 
         
-    def sync_db(self, lookback_days : int = 0, freshness_days : int = 1) -> None:
+    def sync_db(self, lookback_days : int = 0, freshness_days : int = 1, num_threads : int = 1) -> None:
         """Updates price data for all companies.
 
         Parameters
@@ -184,24 +188,23 @@ class DailyStockPriceDataset:
             which means data for yesterday is the minimum acceptable value to consider
             that the price data is already up-to-date.
             
+        threads : 
+            
         Returns
         -------
         None
 
         """
         
-        for idx in range(self.n_symbols):
-            symbol = self.symbols[idx]
-            print(f'Updating price data:  {symbol:6s}  ({idx+1} out of {self.n_symbols})')
-
+        def sync_symbol(symbol, lookback_days, freshness_days):
+            
             target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
             latest_date = self.latest_dates.get(symbol, None)
-
+            
             # Skip data extraction if conditions are satisfied
             if lookback_days==0 and latest_date==target_latest_date:
                 # Return empty data frame.
                 price_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
-                print('  Already up-to-date. Skipping.')
 
             # Extract new price data
             else:
@@ -211,14 +214,21 @@ class DailyStockPriceDataset:
                     start_date = None
 
                 price_df = get_stock_data(symbol, start_date=start_date)
-                print(f'  Fetched {price_df.shape[0]} records.')
-
+                
             # Insert to database
             if price_df.shape[0] == 0:
-                print('  No new records. Skipping.')
+                print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
             else:
-                self._insert_price_data_to_db(price_df)
+                self._insert_price_data_to_db(price_df, verbose=False)
+                print(f'Synced price data for: {symbol:6s}  |  Inserted {price_df.shape[0]} records.')
                 
+                
+        parallel_execute(func = sync_symbol,
+                         args = self.symbols,
+                         num_threads = num_threads,
+                         lookback_days = lookback_days,
+                         freshness_days = freshness_days)
+
         self._refresh_metadata()
 
         
@@ -229,7 +239,7 @@ def sync() -> None:
     pse_companies.sync_db()
     
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
-    price_dataset.sync_db()
+    price_dataset.sync_db(num_threads=4, lookback_days=0)
     
     
 def backfill() -> None:
