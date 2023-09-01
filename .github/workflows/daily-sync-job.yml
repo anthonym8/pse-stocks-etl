@@ -49,8 +49,7 @@ jobs:
           -e POSTGRES_DB_PORT=$POSTGRES_DB_PORT \
           -e POSTGRES_DB_NAME=$POSTGRES_DB_NAME \
           ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION \
-          python -m src.etl.sync
-          pse-stocks-etl python -m src.main \
+          python -m src.main \
           --destination postgres \
           --action sync \
           --concurrency=4
