@@ -32,9 +32,6 @@ jobs:
         echo "IMAGE_VERSION=$IMAGE_VERSION"
         docker pull ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION
 
-    - name: Build Docker image
-      run: docker build . --file Dockerfile --tag pse-stocks-etl
-      
     - name: Run sync job
       env:
         POSTGRES_DB_ENDPOINT: ${{ secrets.PROD_POSTGRES_DB_ENDPOINT }}
