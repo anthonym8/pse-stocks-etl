@@ -8,19 +8,19 @@ load_dotenv('.env')
 
 
 def test_db_endpoint_defined():
-    assert environ.get('DATABASE_ENDPOINT') is not None
+    assert environ.get('POSTGRES_DB_ENDPOINT') is not None
     
 def test_db_username_defined():
-    assert environ.get('DATABASE_USERNAME') is not None
+    assert environ.get('POSTGRES_DB_USERNAME') is not None
     
 def test_db_password_defined():
-    assert environ.get('DATABASE_PASSWORD') is not None
+    assert environ.get('POSTGRES_DB_PASSWORD') is not None
     
 def test_db_port_defined():
-    assert environ.get('DATABASE_PORT') is not None
+    assert environ.get('POSTGRES_DB_PORT') is not None
     
 def test_db_name_defined():
-    assert environ.get('DATABASE_NAME') is not None
+    assert environ.get('POSTGRES_DB_NAME') is not None
     
 def test_read_sql_file():
     sql_stmt = 'SELECT 1 AS col;'

@@ -14,4 +14,4 @@ WORKDIR /pse-stocks-etl
 COPY src src
 COPY tests tests
 
-CMD ["python", "-m", "src.etl.sync"]
+CMD ["python", "-m", "src.main"]

@@ -21,11 +21,11 @@ __all__ = [
 # Prepare database credentials
 load_dotenv('.env')
 
-DB_HOST = environ.get('DATABASE_ENDPOINT')
-DB_PORT = environ.get('DATABASE_PORT')
-DB_NAME = environ.get('DATABASE_NAME')
-DB_USER = environ.get('DATABASE_USERNAME')
-DB_PASSWORD = environ.get('DATABASE_PASSWORD')
+DB_HOST = environ.get('POSTGRES_DB_ENDPOINT')
+DB_PORT = environ.get('POSTGRES_DB_PORT')
+DB_NAME = environ.get('POSTGRES_DB_NAME')
+DB_USER = environ.get('POSTGRES_DB_USERNAME')
+DB_PASSWORD = environ.get('POSTGRES_DB_PASSWORD')
 
 
 def read_sql_file(sql_file):
