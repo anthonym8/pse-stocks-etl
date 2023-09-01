@@ -60,17 +60,17 @@ Input PostgreSQL database endpoint and credentials with sufficient privileges.
 
 ```sh
 ...
-DATABASE_ENDPOINT=
-DATABASE_USERNAME=
-DATABASE_PASSWORD=
-DATABASE_PORT=
-DATABASE_NAME=
+POSTGRES_DB_ENDPOINT=
+POSTGRES_DB_USERNAME=
+POSTGRES_DB_PASSWORD=
+POSTGRES_DB_PORT=
+POSTGRES_DB_NAME=
 ```
 
 Initialize the database tables.
 
 ```
-python -m src.db.init
+python -m src.db.postgres.init
 ```
 
 #### Testing
@@ -107,7 +107,7 @@ This ETL pipeline is packaged and deployed as a docker image. For scheduled runs
 Run the data pipeline.
 
 ```
-python -m src.etl.sync
+python -m src.main --destination postgres --action sync
 ```
 
 
@@ -122,12 +122,12 @@ Run the data pipeline.
 
 ```
 docker run \
-    -e DATABASE_ENDPOINT={{ db-host }} \
-    -e DATABASE_USERNAME={{ username }} \
-    -e DATABASE_PASSWORD={{ password }} \
-    -e DATABASE_PORT={{ port }} \
-    -e DATABASE_NAME={{ db-name }} \
-    pse-stocks-etl
+    -e POSTGRES_DB_ENDPOINT={{ db-host }} \
+    -e POSTGRES_DB_USERNAME={{ username }} \
+    -e POSTGRES_DB_PASSWORD={{ password }} \
+    -e POSTGRES_DB_PORT={{ port }} \
+    -e POSTGRES_DB_NAME={{ db-name }} \
+    pse-stocks-etl --destination postgres --action sync
 ```
 
 ---
@@ -142,12 +142,10 @@ Project Organization
 ├── sample.env           <- Template for the .env file where DB credentials will be stored.
 │
 ├── src                  <- Contains source code files
+│   ├── main.py          <- Main ETL script
 │   ├── db               <- Database init script + DDL statements for the destination tables.                 
-│   ├── etl
-│   │   ├── backfill.py  <- Python script to backfill historical data completely.
-│   │   └── sync.py      <- Main python script or syncing data from source to destination.
-│   │
+│   ├── etl              <- ETL functions for various destination databases.
 │   └── utils            <- Utility and helper functions
 │
-└── tests                <- Test scripts.                 
+└── tests                <- Test scripts          
 ```

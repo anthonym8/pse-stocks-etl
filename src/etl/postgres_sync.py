@@ -1,4 +1,4 @@
-"""Module for syncing market data for PSE stocks"""
+"""Module for syncing PSE market data to a Postgres database"""
 
 # Author: Rey Anthony Masilang
 
@@ -232,24 +232,25 @@ class DailyStockPriceDataset:
         self._refresh_metadata()
 
         
-def sync() -> None:
+def sync(concurrency=1) -> None:
     """Executes an incremental sync job."""
     
     pse_companies = PSECompanies()
     pse_companies.sync_db()
     
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
-    price_dataset.sync_db(num_threads=4, lookback_days=0)
+    price_dataset.sync_db(num_threads=concurrency, lookback_days=0)
     
     
-def backfill() -> None:
+def backfill(concurrency=1) -> None:
     """Executes a complete backfill job."""
     
     pse_companies = PSECompanies()
     pse_companies.sync_db()
     
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
-    price_dataset.sync_db(lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
+    price_dataset.sync_db(num_threads=concurrency, 
+                          lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
     
 
 if __name__ == '__main__':

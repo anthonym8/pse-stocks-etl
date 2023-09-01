@@ -21,18 +21,18 @@ jobs:
 
     - name: Run tests
       env:
-        DATABASE_ENDPOINT: ${{ secrets.TEST_DATABASE_ENDPOINT }}
-        DATABASE_USERNAME: ${{ secrets.TEST_DATABASE_USERNAME }}
-        DATABASE_PASSWORD: ${{ secrets.TEST_DATABASE_PASSWORD }}
-        DATABASE_PORT: ${{ secrets.TEST_DATABASE_PORT }}
-        DATABASE_NAME: ${{ secrets.TEST_DATABASE_NAME }}
+        POSTGRES_DB_ENDPOINT: ${{ secrets.TEST_POSTGRES_DB_ENDPOINT }}
+        POSTGRES_DB_USERNAME: ${{ secrets.TEST_POSTGRES_DB_USERNAME }}
+        POSTGRES_DB_PASSWORD: ${{ secrets.TEST_POSTGRES_DB_PASSWORD }}
+        POSTGRES_DB_PORT: ${{ secrets.TEST_POSTGRES_DB_PORT }}
+        POSTGRES_DB_NAME: ${{ secrets.TEST_POSTGRES_DB_NAME }}
       run: |
         docker run --name pse-stocks-etl \
-          -e DATABASE_ENDPOINT=$DATABASE_ENDPOINT \
-          -e DATABASE_USERNAME=$DATABASE_USERNAME \
-          -e DATABASE_PASSWORD=$DATABASE_PASSWORD \
-          -e DATABASE_PORT=$DATABASE_PORT \
-          -e DATABASE_NAME=$DATABASE_NAME \
+          -e POSTGRES_DB_ENDPOINT=$POSTGRES_DB_ENDPOINT \
+          -e POSTGRES_DB_USERNAME=$POSTGRES_DB_USERNAME \
+          -e POSTGRES_DB_PASSWORD=$POSTGRES_DB_PASSWORD \
+          -e POSTGRES_DB_PORT=$POSTGRES_DB_PORT \
+          -e POSTGRES_DB_NAME=$POSTGRES_DB_NAME \
           pse-stocks-etl sh -c "pytest tests/integration"
 
 
@@ -49,16 +49,19 @@ jobs:
           
     - name: Run sync job
       env:
-        DATABASE_ENDPOINT: ${{ secrets.TEST_DATABASE_ENDPOINT }}
-        DATABASE_USERNAME: ${{ secrets.TEST_DATABASE_USERNAME }}
-        DATABASE_PASSWORD: ${{ secrets.TEST_DATABASE_PASSWORD }}
-        DATABASE_PORT: ${{ secrets.TEST_DATABASE_PORT }}
-        DATABASE_NAME: ${{ secrets.TEST_DATABASE_NAME }}
+        POSTGRES_DB_ENDPOINT: ${{ secrets.TEST_POSTGRES_DB_ENDPOINT }}
+        POSTGRES_DB_USERNAME: ${{ secrets.TEST_POSTGRES_DB_USERNAME }}
+        POSTGRES_DB_PASSWORD: ${{ secrets.TEST_POSTGRES_DB_PASSWORD }}
+        POSTGRES_DB_PORT: ${{ secrets.TEST_POSTGRES_DB_PORT }}
+        POSTGRES_DB_NAME: ${{ secrets.TEST_POSTGRES_DB_NAME }}
       run: |
         docker run --name pse-stocks-etl \
-          -e DATABASE_ENDPOINT=$DATABASE_ENDPOINT \
-          -e DATABASE_USERNAME=$DATABASE_USERNAME \
-          -e DATABASE_PASSWORD=$DATABASE_PASSWORD \
-          -e DATABASE_PORT=$DATABASE_PORT \
-          -e DATABASE_NAME=$DATABASE_NAME \
-          pse-stocks-etl python -m src.etl.sync
+          -e POSTGRES_DB_ENDPOINT=$POSTGRES_DB_ENDPOINT \
+          -e POSTGRES_DB_USERNAME=$POSTGRES_DB_USERNAME \
+          -e POSTGRES_DB_PASSWORD=$POSTGRES_DB_PASSWORD \
+          -e POSTGRES_DB_PORT=$POSTGRES_DB_PORT \
+          -e POSTGRES_DB_NAME=$POSTGRES_DB_NAME \
+          pse-stocks-etl python -m src.main \
+          --destination postgres \
+          --action sync \
+          --concurrency=4
