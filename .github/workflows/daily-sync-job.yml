@@ -42,12 +42,14 @@ jobs:
       run: |
         source version.env
         echo "IMAGE_VERSION=$IMAGE_VERSION"
-        docker run --name pse-stocks-etl \
+        docker run \
           -e POSTGRES_DB_ENDPOINT=$POSTGRES_DB_ENDPOINT \
           -e POSTGRES_DB_USERNAME=$POSTGRES_DB_USERNAME \
           -e POSTGRES_DB_PASSWORD=$POSTGRES_DB_PASSWORD \
           -e POSTGRES_DB_PORT=$POSTGRES_DB_PORT \
           -e POSTGRES_DB_NAME=$POSTGRES_DB_NAME \
           ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION \
-          python -m src.etl.sync
-
+          python -m src.main \
+          --destination postgres \
+          --action sync \
+          --concurrency=4
