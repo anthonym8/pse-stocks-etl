@@ -32,6 +32,9 @@ jobs:
         echo "IMAGE_VERSION=$IMAGE_VERSION"
         docker pull ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION
 
+    - name: Build Docker image
+      run: docker build . --file Dockerfile --tag pse-stocks-etl
+      
     - name: Run sync job
       env:
         POSTGRES_DB_ENDPOINT: ${{ secrets.PROD_POSTGRES_DB_ENDPOINT }}
@@ -42,7 +45,7 @@ jobs:
       run: |
         source version.env
         echo "IMAGE_VERSION=$IMAGE_VERSION"
-        docker run --name pse-stocks-etl \
+        docker run ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION \
           -e POSTGRES_DB_ENDPOINT=$POSTGRES_DB_ENDPOINT \
           -e POSTGRES_DB_USERNAME=$POSTGRES_DB_USERNAME \
           -e POSTGRES_DB_PASSWORD=$POSTGRES_DB_PASSWORD \
@@ -50,4 +53,7 @@ jobs:
           -e POSTGRES_DB_NAME=$POSTGRES_DB_NAME \
           ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION \
           python -m src.etl.sync
-
+          pse-stocks-etl python -m src.main \
+          --destination postgres \
+          --action sync \
+          --concurrency=4
