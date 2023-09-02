@@ -1,0 +1,1 @@
+This is a sample file only. This is used for testing uploads and deletes to and from cloud object storage.
