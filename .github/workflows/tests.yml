@@ -33,7 +33,7 @@ jobs:
         POSTGRES_DB_PASSWORD: ${{ secrets.TEST_POSTGRES_DB_PASSWORD }}
         POSTGRES_DB_PORT: ${{ secrets.TEST_POSTGRES_DB_PORT }}
         POSTGRES_DB_NAME: ${{ secrets.TEST_POSTGRES_DB_NAME }}
-        GCP_PROJECT_NAME: ${{ secrets.TEST_GCP_PROJECT_NAME }}
+        GCP_PROJECT_ID: ${{ secrets.TEST_GCP_PROJECT_ID }}
         GCP_CREDENTIALS_FILE: ${{ secrets.TEST_GCP_CREDENTIALS_FILE }}
         GCS_BUCKET_NAME: ${{ secrets.TEST_GCS_BUCKET_NAME }}
       run: |
@@ -43,7 +43,7 @@ jobs:
           -e POSTGRES_DB_PASSWORD=$POSTGRES_DB_PASSWORD \
           -e POSTGRES_DB_PORT=$POSTGRES_DB_PORT \
           -e POSTGRES_DB_NAME=$POSTGRES_DB_NAME \
-          -e GCP_PROJECT_NAME=$GCP_PROJECT_NAME \
+          -e GCP_PROJECT_ID=$GCP_PROJECT_ID \
           -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
           -e GCS_BUCKET_NAME=$GCS_BUCKET_NAME \
           -v $PWD/credentials:/pse-stocks-etl/credentials \
