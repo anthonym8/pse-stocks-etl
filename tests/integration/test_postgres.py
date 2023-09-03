@@ -1,7 +1,8 @@
 from pandas import DataFrame
 from dotenv import load_dotenv
 from os import environ
-from src.utils.postgres import read_sql_file, template_query, query
+from src.utils.postgres import query
+from src.utils.misc import read_sql_file, render_template
 
 # Prepare database credentials
 load_dotenv('.env')
@@ -26,7 +27,7 @@ def test_read_sql_file():
     sql_stmt = 'SELECT 1 AS col;'
     assert sql_stmt == read_sql_file('tests/integration/sample_sql_file.sql')
 
-def test_template_query():
+def test_render_template():
     raw_stmt = """
         SELECT
               '{{string_value}}' AS {{string_column}}
@@ -52,7 +53,7 @@ def test_template_query():
         'int_column':'my_int_col'
     }
     
-    assert templated_stmt == template_query(raw_stmt, params)
+    assert templated_stmt == render_template(raw_stmt, params)
     
 def test_query_stmt():
     stmt = 'SELECT 1 AS col;'

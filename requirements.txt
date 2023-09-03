@@ -8,3 +8,4 @@ html5lib
 lxml
 pytest
 google-cloud-storage
+jinja2
