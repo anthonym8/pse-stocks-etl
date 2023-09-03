@@ -8,4 +8,5 @@ html5lib
 lxml
 pytest
 google-cloud-storage
+google-cloud-bigquery
 jinja2
