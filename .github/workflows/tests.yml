@@ -9,6 +9,22 @@ on:
 
 jobs:
 
+  unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Build Docker image
+      run: docker build . --file Dockerfile --tag pse-stocks-etl
+
+    - name: Run tests
+      run: |
+        docker run --name pse-stocks-etl \
+          pse-stocks-etl sh -c "pytest tests/unit"
+
+
   integration-tests:
     runs-on: ubuntu-latest
 
