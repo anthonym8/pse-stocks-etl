@@ -36,6 +36,8 @@ jobs:
         GCP_PROJECT_ID: ${{ secrets.TEST_GCP_PROJECT_ID }}
         GCP_CREDENTIALS_FILE: ${{ secrets.TEST_GCP_CREDENTIALS_FILE }}
         GCS_BUCKET_NAME: ${{ secrets.TEST_GCS_BUCKET_NAME }}
+        BIGQUERY_LOCATION: ${{ secrets.TEST_BIGQUERY_LOCATION }}
+        BIGQUERY_DATASET_ID: ${{ secrets.TEST_BIGQUERY_DATASET_ID }}
       run: |
         docker run --name pse-stocks-etl \
           -e POSTGRES_DB_ENDPOINT=$POSTGRES_DB_ENDPOINT \
@@ -46,6 +48,8 @@ jobs:
           -e GCP_PROJECT_ID=$GCP_PROJECT_ID \
           -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
           -e GCS_BUCKET_NAME=$GCS_BUCKET_NAME \
+          -e BIGQUERY_LOCATION=$BIGQUERY_LOCATION \
+          -e BIGQUERY_DATASET_ID=$BIGQUERY_DATASET_ID \
           -v $PWD/credentials:/pse-stocks-etl/credentials \
           pse-stocks-etl sh -c "pytest tests/integration"
 
