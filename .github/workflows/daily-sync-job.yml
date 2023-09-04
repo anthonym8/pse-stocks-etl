@@ -13,7 +13,7 @@ env:
 
 jobs:
 
-  sync_database:
+  sync-postgres:
     runs-on: ubuntu-latest
 
     steps:
@@ -53,3 +53,51 @@ jobs:
           --destination postgres \
           --action sync \
           --concurrency=4
+
+  sync-bigquery:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Create credentials key file
+      env:
+        GCP_CREDENTIALS_JSON: '${{ secrets.PROD_GCP_CREDENTIALS_JSON }}'
+      run: |
+        mkdir credentials 
+        printf '%s ' $GCP_CREDENTIALS_JSON >| credentials/keyfile.json;
+
+    - name: Log in to Docker Hub
+      env:
+        DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+      run: |
+        echo $DOCKERHUB_PASSWORD | docker login --username $DOCKERHUB_USERNAME --password-stdin 
+
+    - name: Pull Docker image
+      run: |
+        source version.env
+        echo "IMAGE_VERSION=$IMAGE_VERSION"
+        docker pull ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION
+
+    - name: Run sync job
+      env:
+        GCP_PROJECT_ID: ${{ secrets.PROD_GCP_PROJECT_ID }}
+        GCP_CREDENTIALS_FILE: ${{ secrets.PROD_GCP_CREDENTIALS_FILE }}
+        GCS_BUCKET_NAME: ${{ secrets.PROD_GCS_BUCKET_NAME }}
+        BIGQUERY_LOCATION: ${{ secrets.PROD_BIGQUERY_LOCATION }}
+        BIGQUERY_DATASET_ID: ${{ secrets.PROD_BIGQUERY_DATASET_ID }}
+      run: |
+        source version.env
+        echo "IMAGE_VERSION=$IMAGE_VERSION"
+        docker run \
+          -e GCP_PROJECT_ID=$GCP_PROJECT_ID \
+          -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
+          -e GCS_BUCKET_NAME=$GCS_BUCKET_NAME \
+          -e BIGQUERY_LOCATION=$BIGQUERY_LOCATION \
+          -e BIGQUERY_DATASET_ID=$BIGQUERY_DATASET_ID \
+          -v $PWD/credentials:/pse-stocks-etl/credentials \
+          pse-stocks-etl python -m src.main \
+          --destination bigquery \
+          --action sync \
+          --concurrency=16

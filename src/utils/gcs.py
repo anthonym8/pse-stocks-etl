@@ -17,11 +17,11 @@ __all__ = [
 # Prepare database credentials
 load_dotenv('.env')
 
-GCP_PROJECT_NAME = environ.get('GCP_PROJECT_NAME')
+GCP_PROJECT_ID = environ.get('GCP_PROJECT_ID')
 GCP_CREDENTIALS_FILE = environ.get('GCP_CREDENTIALS_FILE')
 
 
-def upload_to_gcs(source_file_path, bucket_name, object_key, project=GCP_PROJECT_NAME, credentials_file_path=GCP_CREDENTIALS_FILE):
+def upload_to_gcs(source_file_path, bucket_name, object_key, project_id=GCP_PROJECT_ID, credentials_file_path=GCP_CREDENTIALS_FILE):
     """Uploads a file to Google Cloud Storage.
     
     Parameters
@@ -35,7 +35,7 @@ def upload_to_gcs(source_file_path, bucket_name, object_key, project=GCP_PROJECT
     object_key : str
         The name to give to the object in Google Cloud Storage.
         
-    project : str
+    project_id : str
         The name of the GCP project where the bucket exists.
         
     credentials_file_path : str
@@ -49,7 +49,7 @@ def upload_to_gcs(source_file_path, bucket_name, object_key, project=GCP_PROJECT
     """
     
     # Initialize the Google Cloud Storage client
-    storage_client = storage.Client.from_service_account_json(credentials_file_path, project=project)
+    storage_client = storage.Client.from_service_account_json(credentials_file_path, project=project_id)
 
     # Get the bucket object
     bucket = storage_client.get_bucket(bucket_name)
@@ -66,7 +66,7 @@ def upload_to_gcs(source_file_path, bucket_name, object_key, project=GCP_PROJECT
     return url
     
     
-def delete_object(bucket_name, object_key, project=GCP_PROJECT_NAME, credentials_file_path=GCP_CREDENTIALS_FILE):
+def delete_object(bucket_name, object_key, project_id=GCP_PROJECT_ID, credentials_file_path=GCP_CREDENTIALS_FILE):
     """Deletes an object in Google Cloud Storage.
     
     Parameters
@@ -90,7 +90,7 @@ def delete_object(bucket_name, object_key, project=GCP_PROJECT_NAME, credentials
     """
     
     # Initialize the Google Cloud Storage client
-    storage_client = storage.Client.from_service_account_json(credentials_file_path, project=project)
+    storage_client = storage.Client.from_service_account_json(credentials_file_path, project=project_id)
 
     # Get the bucket object
     bucket = storage_client.get_bucket(bucket_name)

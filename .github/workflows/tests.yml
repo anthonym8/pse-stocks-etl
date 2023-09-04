@@ -9,6 +9,22 @@ on:
 
 jobs:
 
+  unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Build Docker image
+      run: docker build . --file Dockerfile --tag pse-stocks-etl
+
+    - name: Run tests
+      run: |
+        docker run --name pse-stocks-etl \
+          pse-stocks-etl sh -c "pytest tests/unit"
+
+
   integration-tests:
     runs-on: ubuntu-latest
 
@@ -33,9 +49,11 @@ jobs:
         POSTGRES_DB_PASSWORD: ${{ secrets.TEST_POSTGRES_DB_PASSWORD }}
         POSTGRES_DB_PORT: ${{ secrets.TEST_POSTGRES_DB_PORT }}
         POSTGRES_DB_NAME: ${{ secrets.TEST_POSTGRES_DB_NAME }}
-        GCP_PROJECT_NAME: ${{ secrets.TEST_GCP_PROJECT_NAME }}
+        GCP_PROJECT_ID: ${{ secrets.TEST_GCP_PROJECT_ID }}
         GCP_CREDENTIALS_FILE: ${{ secrets.TEST_GCP_CREDENTIALS_FILE }}
         GCS_BUCKET_NAME: ${{ secrets.TEST_GCS_BUCKET_NAME }}
+        BIGQUERY_LOCATION: ${{ secrets.TEST_BIGQUERY_LOCATION }}
+        BIGQUERY_DATASET_ID: ${{ secrets.TEST_BIGQUERY_DATASET_ID }}
       run: |
         docker run --name pse-stocks-etl \
           -e POSTGRES_DB_ENDPOINT=$POSTGRES_DB_ENDPOINT \
@@ -43,9 +61,11 @@ jobs:
           -e POSTGRES_DB_PASSWORD=$POSTGRES_DB_PASSWORD \
           -e POSTGRES_DB_PORT=$POSTGRES_DB_PORT \
           -e POSTGRES_DB_NAME=$POSTGRES_DB_NAME \
-          -e GCP_PROJECT_NAME=$GCP_PROJECT_NAME \
+          -e GCP_PROJECT_ID=$GCP_PROJECT_ID \
           -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
           -e GCS_BUCKET_NAME=$GCS_BUCKET_NAME \
+          -e BIGQUERY_LOCATION=$BIGQUERY_LOCATION \
+          -e BIGQUERY_DATASET_ID=$BIGQUERY_DATASET_ID \
           -v $PWD/credentials:/pse-stocks-etl/credentials \
           pse-stocks-etl sh -c "pytest tests/integration"
 
@@ -79,3 +99,42 @@ jobs:
           --destination postgres \
           --action sync \
           --concurrency=4
+
+
+  e2e-test-run-bigquery:
+    runs-on: ubuntu-latest
+
+    steps:
+    
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Create credentials key file
+      env:
+        GCP_CREDENTIALS_JSON: '${{ secrets.TEST_GCP_CREDENTIALS_JSON }}'
+      run: |
+        mkdir credentials 
+        printf '%s ' $GCP_CREDENTIALS_JSON >| credentials/keyfile.json;
+
+    - name: Build Docker image
+      run: docker build . --file Dockerfile --tag pse-stocks-etl
+          
+    - name: Run sync job
+      env:
+        GCP_PROJECT_ID: ${{ secrets.TEST_GCP_PROJECT_ID }}
+        GCP_CREDENTIALS_FILE: ${{ secrets.TEST_GCP_CREDENTIALS_FILE }}
+        GCS_BUCKET_NAME: ${{ secrets.TEST_GCS_BUCKET_NAME }}
+        BIGQUERY_LOCATION: ${{ secrets.TEST_BIGQUERY_LOCATION }}
+        BIGQUERY_DATASET_ID: ${{ secrets.TEST_BIGQUERY_DATASET_ID }}
+      run: |
+        docker run --name pse-stocks-etl \
+          -e GCP_PROJECT_ID=$GCP_PROJECT_ID \
+          -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
+          -e GCS_BUCKET_NAME=$GCS_BUCKET_NAME \
+          -e BIGQUERY_LOCATION=$BIGQUERY_LOCATION \
+          -e BIGQUERY_DATASET_ID=$BIGQUERY_DATASET_ID \
+          -v $PWD/credentials:/pse-stocks-etl/credentials \
+          pse-stocks-etl python -m src.main \
+          --destination bigquery \
+          --action sync \
+          --concurrency=16

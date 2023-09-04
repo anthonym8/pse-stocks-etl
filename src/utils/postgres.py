@@ -9,11 +9,10 @@ from dotenv import load_dotenv
 from os import environ
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
+from src.utils.misc import read_sql_file, render_template
 
 
 __all__ = [
-    'read_sql_file',
-    'template_query',
     'query'
 ]
 
@@ -26,51 +25,6 @@ DB_PORT = environ.get('POSTGRES_DB_PORT')
 DB_NAME = environ.get('POSTGRES_DB_NAME')
 DB_USER = environ.get('POSTGRES_DB_USERNAME')
 DB_PASSWORD = environ.get('POSTGRES_DB_PASSWORD')
-
-
-def read_sql_file(sql_file):
-    """Read sql statement from sql file into a string.
-    
-    Parameters
-    ----------
-    sql_file : str
-        Path to .sql text file
-        
-    Returns
-    -------
-    sql_stmt : str
-        SQL statement string
-    
-    """
-    
-    with open (sql_file, "r") as myfile:
-        sql_lines = myfile.readlines()
-        sql_stmt = ''.join(sql_lines)
-    return sql_stmt
-
-
-def template_query(stmt, parameters):
-    """Substitutes SQL statement parameters with values
-    
-    Parameters
-    ----------
-    stmt : str
-        Raw SQL statement string which contains parameter placeholders,
-        e.g. {{start_date}}, {{end_date}}
-        
-    parameters : dict
-        Dictionary of parameter-value pairs to substitute to the placeholders
-        in the raw SQL statement.
-    
-    Returns
-    -------
-    stmt : str
-    
-    """
-
-    for key, value in parameters.items():
-        stmt = stmt.replace('{{{{{}}}}}'.format(key), str(value))
-    return stmt
 
 
 def query(stmt=None, sql_file=None, parameters=None, retrieve_result=True):
@@ -106,7 +60,7 @@ def query(stmt=None, sql_file=None, parameters=None, retrieve_result=True):
         
     # Template query as needed
     if parameters is not None:
-        stmt = template_query(stmt, parameters)
+        stmt = render_template(stmt, parameters)
         
     # Establish a connection to the database using sqlalchemy
     engine = create_engine(f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
