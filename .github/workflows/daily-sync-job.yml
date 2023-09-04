@@ -100,4 +100,4 @@ jobs:
           pse-stocks-etl python -m src.main \
           --destination bigquery \
           --action sync \
-          --concurrency=4
+          --concurrency=16
