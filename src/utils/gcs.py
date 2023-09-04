@@ -77,8 +77,8 @@ def delete_object(bucket_name, object_key, project_id=GCP_PROJECT_ID, credential
     object_key : str
         The name of the object to be deleted.
         
-    project : str
-        The name of the GCP project where the bucket exists.
+    project_od : str
+        The unique identifier of the GCP project where the bucket exists.
         
     credentials_file_path : str
         The local path to the JSON credentials file for the GCP project.
@@ -105,3 +105,38 @@ def delete_object(bucket_name, object_key, project_id=GCP_PROJECT_ID, credential
     except Exception as e:
         pass
 
+
+def list_objects(bucket_name, prefix, project_id=GCP_PROJECT_ID, credentials_file_path=GCP_CREDENTIALS_FILE):
+    """Lists objects that match a given prefix within a bucket.
+    
+    Parameters
+    ----------
+    bucket_name : str
+        The name of the Google Cloud Storage bucket.
+    
+    prefix : str
+        The object URI prefix to search for within the bucket.
+        
+    project_id : str
+        The unique identifier of the GCP project where the bucket exists.
+        
+    credentials_file_path : str
+        The local path to the JSON credentials file for the GCP project.
+
+    Returns
+    -------
+    object_uris : list of str
+
+    """
+    
+    # Initialize the Google Cloud Storage client
+    storage_client = storage.Client.from_service_account_json(credentials_file_path, project=project_id)
+
+    # Get the bucket object
+    bucket = storage_client.get_bucket(bucket_name)
+
+    # List all matching objects
+    objects = list(bucket.list_blobs(prefix=prefix))
+    object_uris = ['/'.join(o.id.split('/')[1:-1]) for o in objects]
+    
+    return object_uris
