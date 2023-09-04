@@ -4,12 +4,17 @@
 
 
 import argparse
+
 from src.db.postgres.init import create_tables as postgres_initdb
 from src.etl.postgres_sync import sync as postgres_sync
 from src.etl.postgres_sync import backfill as postgres_backfill
 
+from src.db.bigquery.init import create_tables as bigquery_initdb
+from src.etl.bigquery_sync import sync as bigquery_sync
+from src.etl.bigquery_sync import backfill as bigquery_backfill
 
-DB_OPTIONS = ['postgres']
+
+DB_OPTIONS = ['postgres', 'bigquery']
 
 ACTIONS = [ 'initdb',    # Initialize database
             'backfill',  # Backfill dataset
@@ -34,3 +39,12 @@ if __name__ == '__main__':
             postgres_backfill(concurrency=args.concurrency)
         elif args.action == 'sync':
             postgres_sync(concurrency=args.concurrency)
+            
+            
+    elif args.destination == 'bigquery':
+        if args.action == 'initdb':
+            bigquery_initdb()
+        elif args.action == 'backfill':
+            bigquery_backfill(concurrency=args.concurrency)
+        elif args.action == 'sync':
+            bigquery_sync(concurrency=args.concurrency)

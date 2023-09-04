@@ -5,7 +5,7 @@ pse-stocks-etl
 [![Tests](https://github.com/anthonym8/pse-stocks-etl/actions/workflows/tests.yml/badge.svg)](https://github.com/anthonym8/pse-stocks-etl/actions/workflows/tests.yml)
 [![Daily Sync Job](https://github.com/anthonym8/pse-stocks-etl/actions/workflows/daily-sync-job.yml/badge.svg)](https://github.com/anthonym8/pse-stocks-etl/actions/workflows/daily-sync-job.yml)
 
-Data pipeline for syncing stock price data from PSE Edge (Philippine Stock Exchange) to a Postgres database.
+Data pipeline for syncing stock price data from PSE Edge (Philippine Stock Exchange) to various destination databases.
 
 ---
 
@@ -13,7 +13,7 @@ Overview
 ------------------
 
 This project demonstrates a functional data pipeline where data is **extracted** from REST APIs (PSE Edge), 
-cleaned and **transformed** via custom python functions, and **loaded** to a destination database (Postgres)
+cleaned and **transformed** via custom python functions, and **loaded** to a destination database (e.g. Postgres, BigQuery, etc.)
 for analytics consumption.
 
 The pipeline populates the following database tables:
@@ -30,6 +30,7 @@ For development purposes, it is recommended to have the following setup:
 1. Mac or Linux machine
 1. Miniconda
 1. Postgres or Postgres-compatible database
+1. Google Cloud account with creator access to Google Cloud Storage and BigQuery
 
 #### Environment Setup
 
@@ -47,6 +48,8 @@ conda create -n pse-stocks-etl python==3.8;
 conda activate pse-stocks-etl;
 pip install -r requirements.txt;
 ```
+
+#### Postgres Database Setup
 
 Set up database credentials
 
@@ -70,7 +73,34 @@ POSTGRES_DB_NAME=
 Initialize the database tables.
 
 ```
-python -m src.db.postgres.init
+python -m src.main --destination postgres --action initdb
+```
+
+#### BigQuery Database Setup
+
+Set up database credentials
+
+Copy template file as `.env`.
+
+```sh
+cp sample.env .env
+```
+
+Input PostgreSQL database endpoint and credentials with sufficient privileges.
+
+```sh
+...
+GCP_PROJECT_ID=
+GCP_CREDENTIALS_FILE=
+GCS_BUCKET_NAME=
+BIGQUERY_LOCATION=
+BIGQUERY_DATASET_ID=
+```
+
+Initialize the database tables.
+
+```
+python -m src.main --destination bigquery --action initdb
 ```
 
 #### Testing
