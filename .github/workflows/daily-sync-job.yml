@@ -97,7 +97,8 @@ jobs:
           -e BIGQUERY_LOCATION=$BIGQUERY_LOCATION \
           -e BIGQUERY_DATASET_ID=$BIGQUERY_DATASET_ID \
           -v $PWD/credentials:/pse-stocks-etl/credentials \
-          pse-stocks-etl python -m src.main \
+          ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION \
+          python -m src.main \
           --destination bigquery \
           --action sync \
           --concurrency=16
