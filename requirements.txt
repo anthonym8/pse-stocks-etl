@@ -10,3 +10,6 @@ pytest
 google-cloud-storage
 google-cloud-bigquery
 jinja2
+deltalake
+duckdb
+pyarrow==12.0.0

@@ -13,8 +13,12 @@ from src.db.bigquery.init import create_tables as bigquery_initdb
 from src.etl.bigquery_sync import sync as bigquery_sync
 from src.etl.bigquery_sync import backfill as bigquery_backfill
 
+from src.etl.deltalake_sync import delete_tables as deltalake_reset
+from src.etl.deltalake_sync import sync as deltalake_sync
+from src.etl.deltalake_sync import backfill as deltalake_backfill
 
-DB_OPTIONS = ['postgres', 'bigquery']
+
+DB_OPTIONS = ['postgres', 'bigquery', 'deltalake']
 
 ACTIONS = [ 'initdb',    # Initialize database
             'backfill',  # Backfill dataset
@@ -48,3 +52,12 @@ if __name__ == '__main__':
             bigquery_backfill(concurrency=args.concurrency)
         elif args.action == 'sync':
             bigquery_sync(concurrency=args.concurrency)
+            
+            
+    elif args.destination == 'deltalake':
+        if args.action == 'initdb':
+            deltalake_reset()
+        elif args.action == 'backfill':
+            deltalake_backfill(concurrency=args.concurrency)
+        elif args.action == 'sync':
+            deltalake_sync(concurrency=args.concurrency)

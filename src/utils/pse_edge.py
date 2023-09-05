@@ -225,7 +225,7 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
             extracted_at = r.headers['Date']
 
             if len(chart_data) == 0:
-                prices_df = pd.DataFrame(columns=['symbol','date','open','high','low','close'])
+                prices_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
 
             else:
                 prices_df = pd.DataFrame(chart_data)

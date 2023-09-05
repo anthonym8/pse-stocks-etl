@@ -1,0 +1,57 @@
+name: Delta Lake Sync Job
+
+on:
+  workflow_dispatch:
+
+
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  DOCKERHUB_REPOSITORY: ${{ secrets.DOCKERHUB_REPOSITORY }}
+
+
+jobs:
+
+  sync-deltalake:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Create credentials key file
+      env:
+        GCP_CREDENTIALS_JSON: '${{ secrets.PROD_GCP_CREDENTIALS_JSON }}'
+      run: |
+        mkdir credentials 
+        printf '%s ' $GCP_CREDENTIALS_JSON >| credentials/keyfile.json;
+
+    - name: Log in to Docker Hub
+      env:
+        DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+      run: |
+        echo $DOCKERHUB_PASSWORD | docker login --username $DOCKERHUB_USERNAME --password-stdin 
+
+    - name: Pull Docker image
+      run: |
+        source version.env
+        echo "IMAGE_VERSION=$IMAGE_VERSION"
+        docker pull ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION
+
+    - name: Run sync job
+      env:
+        GCP_PROJECT_ID: ${{ secrets.PROD_GCP_PROJECT_ID }}
+        GCP_CREDENTIALS_FILE: ${{ secrets.PROD_GCP_CREDENTIALS_FILE }}
+        GCS_BUCKET_NAME: ${{ secrets.PROD_GCS_BUCKET_NAME }}
+      run: |
+        source version.env
+        echo "IMAGE_VERSION=$IMAGE_VERSION"
+        docker run \
+          -e GCP_PROJECT_ID=$GCP_PROJECT_ID \
+          -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
+          -e GCS_BUCKET_NAME=$GCS_BUCKET_NAME \
+          -v $PWD/credentials:/pse-stocks-etl/credentials \
+          ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION \
+          python -m src.main \
+          --destination deltalake \
+          --action sync \
+          --concurrency=4
