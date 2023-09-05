@@ -224,7 +224,7 @@ class DailyStockPriceDataset:
                                 partition_filters=[('symbol','=',symbol)])
                 print(f'Synced price data for: {symbol:6s}  |  Inserted {price_df.shape[0]} records.')
                 
-        parallel_execute(func = sync_symbol,
+        parallel_execute(func = backfill_symbol,
                          args = self.symbols,
                          num_threads = num_threads,
                          freshness_days = freshness_days)
@@ -250,6 +250,16 @@ def backfill(concurrency=1) -> None:
     
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset.backfill_table(num_threads=concurrency)
+    
+
+def delete_tables() -> None:
+    """Deletes existing Delta tables."""
+    
+    pse_companies = PSECompaniesDataset()
+    pse_companies._delete_delta_table()
+    
+    price_dataset = DailyStockPriceDataset(pse_companies.symbols)
+    price_dataset._delete_delta_table()
     
 
 if __name__ == '__main__':
