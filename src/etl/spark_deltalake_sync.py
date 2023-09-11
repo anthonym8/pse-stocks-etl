@@ -120,7 +120,7 @@ class PSECompaniesDataset:
         try:
             self.is_delta_table = DeltaTable.isDeltaTable(spark, self.table_path)
         except Exception as e:
-            raise Exception(f'self.table_path = {self.table_path.replace('/', ' / ')}\nException: {e}')
+            raise Exception(f"self.table_path = {self.table_path.replace('/', ' / ')}\nException: {e}")
             
         if self.is_delta_table == False:
             self._create_delta_table()
