@@ -149,7 +149,7 @@ jobs:
 
     - name: Create credentials key file
       env:
-        GCP_CREDENTIALS_FILE: '${{ secrets.PROD_GCP_CREDENTIALS_FILE }}'
+        GCP_CREDENTIALS_FILE: '${{ secrets.TEST_GCP_CREDENTIALS_FILE }}'
       run: |
         mkdir credentials 
         printf '%s ' $GCP_CREDENTIALS_FILE >| credentials/keyfile.json;
