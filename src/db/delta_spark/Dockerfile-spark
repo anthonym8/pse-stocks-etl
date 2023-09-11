@@ -1,0 +1,25 @@
+FROM amazon/aws-glue-libs:glue_libs_4.0.0_image_01
+
+# Install python packages
+COPY src/db/delta_spark/requirements.txt .
+RUN pip3 install -r requirements.txt
+
+# Install GCS connector
+RUN cd $SPARK_HOME/jars; wget https://storage.googleapis.com/hadoop-lib/gcs/gcs-connector-hadoop3-latest.jar
+
+# Set up directories
+RUN mkdir /home/glue_user/pse-stocks-etl
+
+# Set working directory
+WORKDIR /home/glue_user/pse-stocks-etl
+
+# Set environment variables
+ENV DISABLE_SSL=true DATALAKE_FORMATS=delta
+
+# Copy pyspark scripts
+COPY src/etl/spark_deltalake_sync.py .
+COPY src/utils/pse_edge.py .
+COPY src/utils/multithreading.py .
+
+# Default command: run spark job
+CMD ["spark-submit", "--py-files", "multithreading.py,pse_edge.py", "spark_deltalake_sync.py"]
