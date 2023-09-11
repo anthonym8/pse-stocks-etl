@@ -165,5 +165,5 @@ jobs:
         docker run \
           -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
           -e DELTA_TABLE_PATH_PREFIX=$DELTA_TABLE_PATH_PREFIX \
-          -v $PWD/credentials:/pse-stocks-etl/credentials \
+          -v $PWD/credentials:/home/glue_user/pse-stocks-etl/credentials \
           pse-stocks-etl-spark
