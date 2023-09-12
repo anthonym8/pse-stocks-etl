@@ -117,11 +117,7 @@ class PSECompaniesDataset:
         
     def _refresh_metadata(self) -> None:
         """Initializes object metadata based on database state."""
-        try:
-            self.is_delta_table = DeltaTable.isDeltaTable(spark, self.table_path)
-        except Exception as e:
-            raise Exception(f"self.table_path = {self.table_path.replace('/', ' / ')}\nException: {e}")
-            
+        self.is_delta_table = DeltaTable.isDeltaTable(spark, self.table_path)
         if self.is_delta_table == False:
             self._create_delta_table()
         else:
