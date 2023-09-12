@@ -20,6 +20,12 @@ The pipeline populates the following database tables:
 1. `pse.company` → Contains all PSE-listed companies including relevant attributes e.g. company name, ticker symbol, sector, etc.
 1. `pse.daily_stock_price` → Contains daily stock price data (open, high, low, close) per PSE-listed company.
 
+Pipeline destination include the following storage options:
+1. Postgres
+1. BigQuery
+1. Delta Lake on Google Cloud Storage (via [delta-rs](https://delta-io.github.io/delta-rs/python/))
+1. Delta Lake on Google Cloud Storage (via Apache Spark)
+
 ---
 
 Development
@@ -51,9 +57,7 @@ pip install -r requirements.txt;
 
 #### Postgres Database Setup
 
-Set up database credentials
-
-Copy template file as `.env`.
+Set up database credentials. Copy template file as `.env`.
 
 ```sh
 cp sample.env .env
@@ -78,9 +82,10 @@ python -m src.main --destination postgres --action initdb
 
 #### BigQuery Database Setup
 
-Set up database credentials
+Create a JSON keyfile from Google Cloud Console 
+then save it as `keyfile.json` inside the `credentials` folder.
 
-Copy template file as `.env`.
+Set up database credentials. Copy template file as `.env`.
 
 ```sh
 cp sample.env .env
@@ -102,6 +107,77 @@ Initialize the database tables.
 ```
 python -m src.main --destination bigquery --action initdb
 ```
+
+#### Delta Lake Setup
+
+Create a JSON keyfile from Google Cloud Console 
+then save it as `keyfile.json` inside the `credentials` folder.
+
+Set up Google Cloud credentials. Copy template file as `.env`.
+
+```sh
+cp sample.env .env
+```
+
+Provide values to the following variables: 
+
+```sh
+...
+GCP_PROJECT_ID=
+GCP_CREDENTIALS_FILE=
+DELTA_TABLE_PATH_PREFIX=
+
+```
+
+
+### Local Spark Runtime
+
+For development purposes, you may build a single-node Spark cluster provided in this repo.
+
+```sh
+docker build --tag pse-stocks-etl-spark-dev --file src/db/delta_spark/Dockerfile-spark-dev .
+```
+
+Run JupyterLab using the dev container while mounting the relevant python scripts:
+
+```sh
+docker run -it \
+	-v src/etl/spark_deltalake_sync.py:/home/glue_user/pse-stocks-etl/spark_deltalake_sync.py \
+	-v src/utils/multithreading.py:/home/glue_user/pse-stocks-etl/multithreading.py \
+	-v src/utils/pse_edge.py:/home/glue_user/pse-stocks-etl/pse_edge.py \
+	-v .env:/home/glue_user/pse-stocks-etl/.env \
+	-v credentials:/home/glue_user/pse-stocks-etl/credentials \
+	-v data:/home/glue_user/pse-stocks-etl/data \
+	-e DISABLE_SSL=true \
+	-e DATALAKE_FORMATS=delta \
+	-p 18080:18080 \
+	-p 8998:8998 \
+	-p 4040:4040 \
+	--rm \
+	--name pse-stocks-spark pse-stocks-etl-spark-dev \
+	/home/glue_user/jupyter/jupyter_start.sh
+```
+
+Execute spark job via `spark-submit` using the dev container:
+
+```sh
+docker run -it \
+	-v src/etl/spark_deltalake_sync.py:/home/glue_user/pse-stocks-etl/spark_deltalake_sync.py \
+	-v src/utils/multithreading.py:/home/glue_user/pse-stocks-etl/multithreading.py \
+	-v src/utils/pse_edge.py:/home/glue_user/pse-stocks-etl/pse_edge.py \
+	-v .env:/home/glue_user/pse-stocks-etl/.env \
+	-v credentials:/home/glue_user/pse-stocks-etl/credentials \
+	-v data:/home/glue_user/pse-stocks-etl/data \
+	-e DISABLE_SSL=true \
+	-e DATALAKE_FORMATS=delta \
+	-p 18080:18080 \
+	-p 8998:8998 \
+	-p 4040:4040 \
+	--rm \
+	--name pse-stocks-spark pse-stocks-etl-spark \
+	spark-submit --py-files multithreading.py,pse_edge.py spark_deltalake_sync.py
+```
+
 
 #### Testing
 
@@ -159,6 +235,24 @@ docker run \
     -e POSTGRES_DB_NAME={{ db-name }} \
     pse-stocks-etl --destination postgres --action sync
 ```
+
+
+### Running via Spark
+
+Use this command to run the spark job:
+
+```
+spark-submit --py-files multithreading.py,pse_edge.py spark_deltalake_sync.py
+```
+
+Depending on your spark runtime, you may need to configure additional dependencies:
+- Additional jars:
+    - `gcs-connector-hadoop3-latest.jar`
+    - `delta-core_2.12-2.1.0.jar`
+    - `delta-storage-2.1.0.jar`
+- Additional python libraries:
+    - `delta-spark`
+    - others (see `src/db/delta_spark/requirements.txt`)
 
 ---
 
