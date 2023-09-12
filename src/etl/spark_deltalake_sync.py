@@ -272,15 +272,15 @@ class DailyStockPriceDataset:
                 .whenMatchedUpdateAll() \
                 .whenNotMatchedInsertAll() \
                 .execute()
+        
+            # Refresh object metadata
+            self._refresh_metadata()
             
         except AnalysisException as e:
             print('No updates available. Skipping upsert step.')
 
         # Clean up temporary CSV files
         delete_folder(job_output_directory)
-        
-        # Refresh object metadata
-        self._refresh_metadata()
         
         
 def sync(concurrency=DEFAULT_CONCURRENCY) -> None:
