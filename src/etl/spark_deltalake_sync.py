@@ -112,7 +112,7 @@ class PSECompaniesDataset:
     def _create_delta_table(self) -> None:
         """Initializes the Delta table."""
         empty_df = spark.createDataFrame([], schema=self.schema)
-        empty_df.write.format("delta").mode("overwrite").save(self.table_path)
+        empty_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(self.table_path)
         self._refresh_metadata()
         
     def _refresh_metadata(self) -> None:
@@ -181,7 +181,7 @@ class DailyStockPriceDataset:
     def _create_delta_table(self) -> None:
         """Initializes the Delta table."""
         empty_df = spark.createDataFrame([], schema=self.schema)
-        empty_df.write.partitionBy("symbol").format("delta").mode("overwrite").save(self.table_path)
+        empty_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").save(self.table_path)
         self._refresh_metadata()
     
     def _refresh_metadata(self) -> None:
