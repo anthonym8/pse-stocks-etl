@@ -98,7 +98,7 @@ jobs:
           pse-stocks-etl python -m src.main \
           --destination postgres \
           --action sync \
-          --concurrency=4
+          --concurrency=1
 
 
   e2e-test-run-bigquery:
@@ -137,7 +137,7 @@ jobs:
           pse-stocks-etl python -m src.main \
           --destination bigquery \
           --action sync \
-          --concurrency=16
+          --concurrency=1
           
 
   e2e-test-run-deltalake:
@@ -174,4 +174,4 @@ jobs:
           python -m src.main \
           --destination deltalake \
           --action sync \
-          --concurrency=4
+          --concurrency=1
