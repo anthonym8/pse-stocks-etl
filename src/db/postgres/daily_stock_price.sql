@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS pse.daily_stock_price (
 	, "updated_at"     TIMESTAMP NOT NULL DEFAULT NOW()
 	
 	, PRIMARY KEY ("symbol","date")
-	, FOREIGN KEY ("symbol") REFERENCES pse.company ("symbol")
+	, FOREIGN KEY ("symbol") REFERENCES pse.company ("symbol") ON DELETE CASCADE
 );
 
 COMMIT;

@@ -11,28 +11,33 @@ from src.utils.multithreading import parallel_execute
 from typing import List
     
     
-class PSECompanies:
+class PSECompaniesDataset:
     """Dataset class for PSE-listed companies."""
     
     def __init__(self):
-        self._refresh_metadata()
-        
-    def _refresh_metadata(self) -> None:
-        """Initializes object metadata based from database state."""
-        symbols_df = query("SELECT symbol FROM pse.company ORDER BY symbol;")
-        self.symbols = symbols_df.symbol.tolist()  # List of symbols
+        self.source_data = None
+        self.db_data = None
+        self.symbols = None
+        self._fetch_source_data()
+        self._fetch_db_data()
         
     def _delete_all_records(self) -> None:
         """Deletes all database records."""
         query("DELETE FROM pse.company;", retrieve_result=False)
-        self._refresh_metadata()
+        self._fetch_db_data()
+        
+    def _fetch_source_data(self) -> pd.DataFrame:
+        """Fetches data from source."""
+        self.source_data = get_listed_companies()
+        self.symbols = self.source_data.symbol.tolist()
+        return self.source_data
     
-    def fetch_db_records(self) -> pd.DataFrame:
+    def _fetch_db_data(self) -> pd.DataFrame:
         """Fetches the current database records."""
-        data = query("SELECT * FROM pse.company ORDER BY symbol;")
-        return data
-    
-    def sync_db(self, batch_size: int = 100) -> None:
+        self.db_data = query("SELECT * FROM pse.company ORDER BY symbol;")
+        return self.db_data
+            
+    def sync_table(self, batch_size: int = 100) -> None:
         """Syncs database table to PSE Edge data.
         
         Parameters
@@ -45,10 +50,7 @@ class PSECompanies:
         None
 
         """
-        
-        # Extract source data
-        source_data = get_listed_companies()
-        
+                
         # Insert new data to DB
         print('Inserting rows to database.')
 
@@ -68,10 +70,10 @@ class PSECompanies:
         """
 
         rows_to_insert = []
-        n_companies = source_data.shape[0]
+        n_companies = self.source_data.shape[0]
         for idx in range(n_companies):
             symbol, company_name, sector, subsector, listing_date, extracted_at = \
-                source_data.iloc[idx].loc[['symbol', 'company_name', 'sector', 'subsector', 'listing_date', 'extracted_at']]
+                self.source_data.iloc[idx].loc[['symbol', 'company_name', 'sector', 'subsector', 'listing_date', 'extracted_at']]
 
             row_str = f"('{symbol}','{company_name}','{sector}','{subsector}','{listing_date}','{extracted_at}')"
             rows_to_insert.append(row_str)
@@ -82,7 +84,7 @@ class PSECompanies:
                 query(stmt=stmt, retrieve_result=False)
                 rows_to_insert = []
                 
-        self._refresh_metadata()
+        self._fetch_db_data()
                 
     
 class DailyStockPriceDataset:
@@ -97,31 +99,25 @@ class DailyStockPriceDataset:
     
     def __init__(self, symbols : List[str]):
         self.symbols = symbols
-        self.n_symbols = len(symbols)
-        self._refresh_metadata()
+        self.db_latest_dates = {}
+        self._get_db_latest_dates()
     
-    def _get_latest_dates(self) -> dict:
+    def _get_db_latest_dates(self) -> dict:
         """Fetches the current database state."""
-        stmt = f"""
+        stmt = """
             SELECT symbol, max(date) AS latest_date
             FROM pse.daily_stock_price
+            WHERE symbol IN ({{ symbols }})
             GROUP BY symbol;
         """
-
-        df = query(stmt=stmt)
-        latest_dates = df.set_index('symbol').to_dict(orient='dict')['latest_date']
+        df = query(stmt=stmt, parameters={'symbols':','.join([f"'{s}'" for s in self.symbols])})
+        self.db_latest_dates = df.set_index('symbol').to_dict(orient='dict')['latest_date']
+        return self.db_latest_dates
         
-        return latest_dates
-    
-    def _refresh_metadata(self) -> None:
-        """Initializes object metadata based from database state."""
-        latest_dates = self._get_latest_dates()
-        self.latest_dates = {s:latest_dates.get(s, None) for s in self.symbols}
-        
-    def _delete_all_records(self) -> None:
-        """Deletes all database records."""
-        query("DELETE FROM pse.daily_stock_price;", retrieve_result=False)
-        self._refresh_metadata()
+    def _delete_records(self, condition="False") -> None:
+        """Deletes records from the table."""
+        query(f"DELETE FROM pse.daily_stock_price WHERE {condition};", retrieve_result=False)
+        self._get_db_latest_dates()
         
     def _insert_price_data_to_db(self, df: pd.DataFrame, batch_size: int = 3000, verbose: bool = True) -> None:
         """Inserts price data records to the database.
@@ -175,7 +171,7 @@ class DailyStockPriceDataset:
                 rows_to_insert = []
                 
         
-    def sync_db(self, lookback_days : int = 0, freshness_days : int = 1, num_threads : int = 1) -> None:
+    def sync_table(self, lookback_days : int = 0, freshness_days : int = 1, num_threads : int = 1) -> None:
         """Updates price data for all companies.
 
         Parameters
@@ -197,23 +193,12 @@ class DailyStockPriceDataset:
         """
         
         def sync_symbol(symbol, lookback_days, freshness_days):
+            latest_date = self.db_latest_dates.get(symbol, datetime(1970,1,1).date())
+            target_end_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
+            target_start_date = latest_date + timedelta(days=1-lookback_days)
             
-            target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
-            latest_date = self.latest_dates.get(symbol, None)
-            
-            # Skip data extraction if conditions are satisfied
-            if lookback_days==0 and latest_date==target_latest_date:
-                # Return empty data frame.
-                price_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
-
-            # Extract new price data
-            else:
-                if latest_date is not None: 
-                    start_date = (latest_date + timedelta(days=1-lookback_days)).strftime('%Y-%m-%d')
-                else:
-                    start_date = None
-
-                price_df = get_stock_data(symbol, start_date=start_date)
+            # Fetch data from API
+            price_df = get_stock_data(symbol, start_date=target_start_date, end_date=target_end_date)
                 
             # Insert to database
             if price_df.shape[0] == 0:
@@ -229,28 +214,28 @@ class DailyStockPriceDataset:
                          lookback_days = lookback_days,
                          freshness_days = freshness_days)
 
-        self._refresh_metadata()
+        self._get_db_latest_dates()
 
         
 def sync(concurrency=1) -> None:
     """Executes an incremental sync job."""
     
-    pse_companies = PSECompanies()
-    pse_companies.sync_db()
+    companies_dataset = PSECompaniesDataset()
+    companies_dataset.sync_table()
     
-    price_dataset = DailyStockPriceDataset(pse_companies.symbols)
-    price_dataset.sync_db(num_threads=concurrency, lookback_days=0)
+    price_dataset = DailyStockPriceDataset(companies_dataset.source_symbols)
+    price_dataset.sync_table(num_threads=concurrency, lookback_days=0)
     
     
 def backfill(concurrency=1) -> None:
     """Executes a complete backfill job."""
     
-    pse_companies = PSECompanies()
-    pse_companies.sync_db()
+    companies_dataset = PSECompaniesDataset()
+    companies_dataset.sync_table()
     
-    price_dataset = DailyStockPriceDataset(pse_companies.symbols)
-    price_dataset.sync_db(num_threads=concurrency, 
-                          lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
+    price_dataset = DailyStockPriceDataset(companies_dataset.source_symbols)
+    price_dataset.sync_table(num_threads=concurrency, 
+                             lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
     
 
 if __name__ == '__main__':
