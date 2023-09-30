@@ -138,3 +138,40 @@ jobs:
           --destination bigquery \
           --action sync \
           --concurrency=16
+          
+
+  e2e-test-run-deltalake:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Create credentials key file
+      env:
+        GCP_CREDENTIALS_JSON: '${{ secrets.TEST_GCP_CREDENTIALS_JSON }}'
+      run: |
+        mkdir credentials 
+        printf '%s ' $GCP_CREDENTIALS_JSON >| credentials/keyfile.json;
+
+    - name: Build Docker image
+      run: docker build . --file Dockerfile --tag pse-stocks-etl
+
+    - name: Run sync job
+      env:
+        GCP_PROJECT_ID: ${{ secrets.TEST_GCP_PROJECT_ID }}
+        GCP_CREDENTIALS_FILE: ${{ secrets.TEST_GCP_CREDENTIALS_FILE }}
+        GCS_BUCKET_NAME: ${{ secrets.TEST_GCS_BUCKET_NAME }}
+      run: |
+        source version.env
+        echo "IMAGE_VERSION=$IMAGE_VERSION"
+        docker run \
+          -e GCP_PROJECT_ID=$GCP_PROJECT_ID \
+          -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
+          -e GCS_BUCKET_NAME=$GCS_BUCKET_NAME \
+          -v $PWD/credentials:/pse-stocks-etl/credentials \
+          pse-stocks-etl \
+          python -m src.main \
+          --destination deltalake \
+          --action sync \
+          --concurrency=4
