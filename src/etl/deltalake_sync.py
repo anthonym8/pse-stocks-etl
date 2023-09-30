@@ -191,10 +191,6 @@ class DailyStockPriceDataset:
                 # Extract data
                 price_df = get_stock_data(symbol, start_date=start_date, end_date=target_latest_date)
                 
-                # Deduplicate rows
-                price_df = duckdb.sql("SELECT * FROM price_df \
-                                       QUALIFY row_number() OVER (partition by symbol, date order by date) = 1;").df()
-                
             # Save to CSV
             if price_df.shape[0] == 0:
                 print(f'No new price data for: {symbol:6s}  |  Skipping.')
@@ -215,6 +211,10 @@ class DailyStockPriceDataset:
         try:
             # Read CSVs to Polars dataframe
             updates_df = pl.read_csv(f'{job_output_directory}/*.csv', schema=self.polars_schema)
+            
+            # Deduplicate rows
+            dedupe_sql = "SELECT * FROM updates_df QUALIFY row_number() OVER (partition by symbol, date order by date) = 1;"
+            updates_df = duckdb.sql(dedupe_sql).pl()
             
             # Insert to Delta table
             updates_df.write_delta(self.table_path, storage_options=storage_options, mode='append')
