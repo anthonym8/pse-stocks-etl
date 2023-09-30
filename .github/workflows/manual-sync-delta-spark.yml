@@ -25,8 +25,17 @@ jobs:
         mkdir credentials 
         printf '%s ' $GCP_CREDENTIALS_JSON >| credentials/keyfile.json;
 
-    - name: Build Docker image
-      run: docker build . --file src/db/delta_spark/Dockerfile-spark --tag pse-stocks-etl-spark
+    - name: Log in to Docker Hub
+      env:
+        DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+      run: |
+        echo $DOCKERHUB_PASSWORD | docker login --username $DOCKERHUB_USERNAME --password-stdin 
+
+    - name: Pull Docker image
+      run: |
+        source version.env
+        echo "IMAGE_VERSION=$IMAGE_VERSION"
+        docker pull ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:pyspark-$IMAGE_VERSION
 
     - name: Run sync job
       env:
@@ -37,4 +46,4 @@ jobs:
           -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
           -e DELTA_TABLE_PATH_PREFIX=$DELTA_TABLE_PATH_PREFIX \
           -v $PWD/credentials:/home/glue_user/pse-stocks-etl/credentials \
-          pse-stocks-etl-spark
+          ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:pyspark-$IMAGE_VERSION
