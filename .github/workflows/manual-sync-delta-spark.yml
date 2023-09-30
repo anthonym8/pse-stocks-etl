@@ -42,6 +42,8 @@ jobs:
         GCP_CREDENTIALS_FILE: ${{ secrets.PROD_GCP_CREDENTIALS_FILE }}
         DELTA_TABLE_PATH_PREFIX: ${{ secrets.PROD_DELTA_TABLE_PATH_PREFIX }}
       run: |
+        source version.env
+        echo "IMAGE_VERSION=$IMAGE_VERSION"
         docker run \
           -e GCP_CREDENTIALS_FILE=$GCP_CREDENTIALS_FILE \
           -e DELTA_TABLE_PATH_PREFIX=$DELTA_TABLE_PATH_PREFIX \
