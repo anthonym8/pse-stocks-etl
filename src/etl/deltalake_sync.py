@@ -169,6 +169,10 @@ class DailyStockPriceDataset:
         unique_id = ''.join(random.choice(string.ascii_letters) for _ in range(8))
         job_output_directory = f'data/tmp/price/{timestamp_id}_{unique_id}'
         
+        # Create directory
+        prepare_directory(f'{job_output_directory}/')
+        
+        # Placeholder for CSV file paths
         csv_files = []
 
         def extract_price_updates(symbol, lookback_days, freshness_days):
@@ -196,7 +200,6 @@ class DailyStockPriceDataset:
                 print(f'No new price data for: {symbol:6s}  |  Skipping.')
             else:
                 file_path = f'{job_output_directory}/{symbol}.csv'
-                prepare_directory(file_path)
                 price_df.to_csv(file_path, index=False)
                 csv_files.append(file_path)
                 print(f'Downloaded price data for: {symbol:6s}  |  {price_df.shape[0]} records.')
