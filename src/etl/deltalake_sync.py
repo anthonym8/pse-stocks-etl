@@ -144,11 +144,21 @@ class DailyStockPriceDataset:
             
         self._refresh_metadata()
                     
-    def sync_table(self, freshness_days : int = 1, num_threads : int = 1) -> None:
+    def sync_table(self, lookback_days : int = 0, freshness_days : int = 1, num_threads : int = 1) -> None:
         """Updates price data for all companies.
+        
+        Due to the lack of delete & update functionality in python delta-rs,
+        this method extracts incremental updates from PSE Edge, combines
+        old and new data with deduplication, and overwrites the existing
+        Delta table. Full dataset is fairly small so this is okay.
+        Once deletes and/or updates are added to python delta-rs, this is 
+        subject for updating as well.
 
         Parameters
         ----------
+        lookback_days : int, default 0
+            The number of days in the past to re-extract price data for.
+            
         freshness_days : int, default 1
             The acceptable data delay in number of days. By default, this is set to 1
             which means data for yesterday is the minimum acceptable value to consider
@@ -174,7 +184,7 @@ class DailyStockPriceDataset:
         # Placeholder for CSV file paths
         csv_files = []
 
-        def extract_price_updates(symbol, freshness_days):
+        def extract_price_updates(symbol, lookback_days, freshness_days):
             
             target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
             latest_date = self.latest_dates.get(symbol, datetime(1970,1,1).date())
@@ -187,7 +197,7 @@ class DailyStockPriceDataset:
             # Extract new price data
             else:
                 if latest_date is not None: 
-                    start_date = (latest_date + timedelta(days=1)).strftime('%Y-%m-%d')
+                    start_date = (latest_date + timedelta(days=1-lookback_days)).strftime('%Y-%m-%d')
                 else:
                     start_date = None
 
@@ -207,27 +217,52 @@ class DailyStockPriceDataset:
         parallel_execute(func = extract_price_updates,
                          args = self.symbols,
                          num_threads = num_threads,
+                         lookback_days = lookback_days,
                          freshness_days = freshness_days)
         
         try:
             # Read CSVs to Polars dataframe
-            updates_df = pl.read_csv(f'{job_output_directory}/*.csv', schema=self.polars_schema)
+            updates = pl.read_csv(f'{job_output_directory}/*.csv', schema=self.polars_schema)
             
-            # Deduplicate rows
-            dedupe_sql = "SELECT * FROM updates_df QUALIFY row_number() OVER (partition by symbol, date order by date) = 1;"
-            updates_df = duckdb.sql(dedupe_sql).pl()
-            
-            # Insert to Delta table
-            updates_df.write_delta(self.table_path, storage_options=storage_options, mode='append')
+            # Merge updates in memory
+            merge_sql = """
+             -- Duplicate main table in memory
+                CREATE OR REPLACE TABLE new_tbl AS (
+                    SELECT * FROM daily_stock_price
+                );
 
+             -- Deduplicate updates
+                CREATE OR REPLACE TABLE deduped_updates AS (
+                    SELECT * FROM updates QUALIFY row_number() OVER (partition by symbol, date order by extracted_at desc) = 1
+                );
+
+             -- Upsert rows
+                UPDATE new_tbl
+                    SET symbol = deduped_updates.symbol
+                      , date = deduped_updates.date
+                      , open = deduped_updates.open
+                      , high = deduped_updates.high
+                      , low = deduped_updates.low
+                      , close = deduped_updates.close
+                      , extracted_at = deduped_updates.extracted_at
+                    FROM deduped_updates
+                    WHERE new_tbl.symbol = deduped_updates.symbol
+                      AND new_tbl.date = deduped_updates.date;
+
+             -- Get entire updated table
+                SELECT *
+                FROM new_tbl;
+            """
+            updated_table = duckdb.sql(merge_sql).pl()
+
+            # Overwrite Delta table
+            updated_table.write_delta(self.table_path, storage_options=storage_options, mode='overwrite')
+                
             # Re-fetch Delta table
             self._refresh_metadata()
 
-            # Optimize Delta table
-            self.delta_table.optimize.compact()
-
             # Vacuum Delta table (remove obsolete files)
-            self.delta_table.vacuum(dry_run=False, retention_hours=0, enforce_retention_duration=False)
+            self.delta_table.vacuum(dry_run=False)
 
         except pl.ComputeError as e:
             print('No updates. Done.')
@@ -253,10 +288,8 @@ def backfill(concurrency=1) -> None:
     pse_companies.sync_table()
     
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
-    
-    # Delete table & sync
-    price_dataset._delete_delta_table()
-    price_dataset.sync_table(num_threads=concurrency)
+    price_dataset.sync_table(num_threads=concurrency, 
+                             lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
     
 
 def delete_tables() -> None:
