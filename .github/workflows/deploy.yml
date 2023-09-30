@@ -11,7 +11,7 @@ env:
   DOCKERHUB_REPOSITORY: ${{ secrets.DOCKERHUB_REPOSITORY }}
 
 jobs:
-  deploy:
+  deploy-python-image:
     runs-on: ubuntu-latest
 
     steps:
@@ -35,3 +35,28 @@ jobs:
           source version.env
           echo "IMAGE_VERSION=$IMAGE_VERSION"
           docker push ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:$IMAGE_VERSION
+          
+  deploy-pyspark-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Docker image
+        run: |
+          source version.env
+          echo "IMAGE_VERSION=$IMAGE_VERSION"
+          docker build -t ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:pyspark-$IMAGE_VERSION --file src/db/delta_spark/Dockerfile-spark .
+
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
+        run: |
+          echo $DOCKERHUB_PASSWORD | docker login --username $DOCKERHUB_USERNAME --password-stdin
+
+      - name: Push Docker image
+        run: |
+          source version.env
+          echo "IMAGE_VERSION=$IMAGE_VERSION"
+          docker push ${{ env.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPOSITORY }}:pyspark-$IMAGE_VERSION
