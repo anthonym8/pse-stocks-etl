@@ -142,14 +142,11 @@ class DailyStockPriceDataset:
         for key in table_artifact_uris:
             delete_object(bucket_name=GCS_BUCKET_NAME, object_key=key)
                     
-    def sync_table(self, lookback_days : int = 0, freshness_days : int = 1, num_threads : int = 1) -> None:
+    def sync_table(self, freshness_days : int = 1, num_threads : int = 1) -> None:
         """Updates price data for all companies.
 
         Parameters
         ----------
-        lookback_days : int, default 0
-            The number of days in the past to re-extract price data for.
-
         freshness_days : int, default 1
             The acceptable data delay in number of days. By default, this is set to 1
             which means data for yesterday is the minimum acceptable value to consider
@@ -175,7 +172,7 @@ class DailyStockPriceDataset:
         # Placeholder for CSV file paths
         csv_files = []
 
-        def extract_price_updates(symbol, lookback_days, freshness_days):
+        def extract_price_updates(symbol, freshness_days):
             
             target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
             latest_date = self.latest_dates.get(symbol, datetime(1970,1,1).date())
@@ -188,7 +185,7 @@ class DailyStockPriceDataset:
             # Extract new price data
             else:
                 if latest_date is not None: 
-                    start_date = (latest_date + timedelta(days=1-lookback_days)).strftime('%Y-%m-%d')
+                    start_date = (latest_date + timedelta(days=1)).strftime('%Y-%m-%d')
                 else:
                     start_date = None
 
@@ -208,7 +205,6 @@ class DailyStockPriceDataset:
         parallel_execute(func = extract_price_updates,
                          args = self.symbols,
                          num_threads = num_threads,
-                         lookback_days = lookback_days,
                          freshness_days = freshness_days)
         
         try:
@@ -255,8 +251,10 @@ def backfill(concurrency=1) -> None:
     pse_companies.sync_table()
     
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
-    price_dataset.sync_table(num_threads=concurrency, 
-                             lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
+    
+    # Delete table & sync
+    price_dataset._delete_delta_table()
+    price_dataset.sync_table(num_threads=concurrency)
     
 
 def delete_tables() -> None:
