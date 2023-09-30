@@ -214,24 +214,25 @@ class DailyStockPriceDataset:
                          num_threads = num_threads,
                          freshness_days = freshness_days)
         
-        # Lazy-read all CSVs
         try:
+            # Read CSVs to Polars dataframe
             updates_df = pl.read_csv(f'{job_output_directory}/*.csv', schema=self.polars_schema)
-        except pl.ComputeError as e:
-            print('No data found.')
             
-        # Insert to Delta table
-        updates_df.write_delta(self.table_path, storage_options=storage_options, mode='append')
-        
-        # Fetch Delta table
-        self._refresh_metadata()
-        
-        # Optimize Delta table
-        self.delta_table.optimize.compact()
-        
-        # Vacuum Delta table (remove obsolete files)
-        self.delta_table.vacuum(dry_run=False, retention_hours=0, enforce_retention_duration=False)
-        
+            # Insert to Delta table
+            updates_df.write_delta(self.table_path, storage_options=storage_options, mode='append')
+
+            # Re-fetch Delta table
+            self._refresh_metadata()
+
+            # Optimize Delta table
+            self.delta_table.optimize.compact()
+
+            # Vacuum Delta table (remove obsolete files)
+            self.delta_table.vacuum(dry_run=False, retention_hours=0, enforce_retention_duration=False)
+
+        except pl.ComputeError as e:
+            print('No updates. Done.')
+            
         # Clean up local artifacts
         delete_files(csv_files)
 
