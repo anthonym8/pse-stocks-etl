@@ -4,7 +4,9 @@
 
 
 import pandas as pd
-import pyarrow as pa
+import polars as pl
+import random
+import string
 import duckdb
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -16,6 +18,7 @@ from deltalake.exceptions import TableNotFoundError
 from src.utils.pse_edge import get_listed_companies, get_stock_data
 from src.utils.multithreading import parallel_execute
 from src.utils.gcs import list_objects, delete_object
+from src.utils.misc import prepare_directory, delete_files
 
 
 load_dotenv('.env')
@@ -33,14 +36,22 @@ class PSECompaniesDataset:
     def __init__(self):
         self.table_directory = 'delta-lake/pse/company'
         self.table_path = f'gs://{GCS_BUCKET_NAME}/{self.table_directory}'
+        self.polars_schema = {'symbol':pl.Utf8,
+                              'company_name':pl.Utf8,
+                              'sector':pl.Utf8,
+                              'subsector':pl.Utf8,
+                              'listing_date':pl.Date,
+                              'extracted_at':pl.Datetime}
         self._refresh_metadata()
         
     def _refresh_metadata(self) -> None:
         """Initializes object metadata based from database state."""
         try:
             self.delta_table = DeltaTable(self.table_path, storage_options=storage_options)
-            symbols_df = self.delta_table.to_pandas(columns=['symbol'])
-            self.symbols = symbols_df.symbol.tolist()  # List of symbols
+            symbols_query = "SELECT DISTINCT symbol FROM company ORDER BY symbol;"
+            duckdb_table = duckdb.arrow(self.delta_table.to_pyarrow_dataset())
+            symbols_df = duckdb_table.query(virtual_table_name='company', sql_query=symbols_query).df()
+            self.symbols = symbols_df.loc[:,'symbol'].tolist()
 
         except TableNotFoundError as e:
             self.delta_table = None
@@ -51,27 +62,32 @@ class PSECompaniesDataset:
         table_artifact_uris = list_objects(bucket_name=GCS_BUCKET_NAME, prefix=self.table_directory)
         for key in table_artifact_uris:
             delete_object(bucket_name=GCS_BUCKET_NAME, object_key=key)
-            
-    def fetch_table_records(self) -> pd.DataFrame:
-        """Fetches the current database records."""
-        return self.delta_table.to_pandas()
     
     def sync_table(self) -> None:
         """Syncs database table to PSE Edge data."""
         
+        # Generate unique folder name (for uniqueness)
+        timestamp_id = datetime.now().strftime('%Y%m%dT%H%M%S')
+        unique_id = ''.join(random.choice(string.ascii_letters) for _ in range(8))
+        file_path = f'data/tmp/company/{timestamp_id}_{unique_id}.csv'
+
         # Extract source data
         df = get_listed_companies()
-        df = df.astype({'symbol':str,
-                        'company_name':str,
-                        'sector':str,
-                        'subsector':str,
-                        'listing_date':'datetime64',
-                        'extracted_at':'datetime64'})
-
-        # Write to Delta table
-        write_deltalake(self.table_path, data=df, storage_options=storage_options, mode='overwrite', overwrite_schema=True)
         
+        # Save to CSV and read to Polars dataframe (for column type correctness)
+        prepare_directory(file_path)
+        df.to_csv(file_path, index=False)
+        polars_df = pl.read_csv(file_path, schema=self.polars_schema)
+        
+        # Write to Delta table
+        polars_df.write_delta(self.table_path, storage_options=storage_options, mode='overwrite', overwrite_schema=True)        
         self._refresh_metadata()
+        
+        # Vacuum Delta table (remove obsolete files)
+        self.delta_table.vacuum(dry_run=False, retention_hours=0, enforce_retention_duration=False)
+        
+        # Delete local artifacts
+        delete_files([file_path])
         
 
 class DailyStockPriceDataset:
@@ -86,36 +102,28 @@ class DailyStockPriceDataset:
     
     def __init__(self, symbols : List[str]):
         self.symbols = symbols
-        self.n_symbols = len(symbols)
         self.table_directory = 'delta-lake/pse/daily_stock_price'
         self.table_path = f'gs://{GCS_BUCKET_NAME}/{self.table_directory}'
-        self.pandas_schema = {'symbol':str,
-                              'date':str,
-                              'open':float,
-                              'high':float,
-                              'low':float,
-                              'close':float,
-                              'extracted_at':str}
-        self.pyarrow_schema = pa.schema([('symbol', pa.string()),
-                                         ('date', pa.string()),
-                                         ('open', pa.float64()),
-                                         ('high', pa.float64()),
-                                         ('low', pa.float64()),
-                                         ('close', pa.float64()),
-                                         ('extracted_at', pa.string())])
+        self.polars_schema = {'symbol':pl.Utf8,
+                              'date':pl.Date,
+                              'open':pl.Float32,
+                              'high':pl.Float32,
+                              'low':pl.Float32,
+                              'close':pl.Float32,
+                              'extracted_at':pl.Datetime}
+        
         self._refresh_metadata()
     
     def _get_latest_dates(self) -> dict:
         """Fetches the current database state."""
         if self.delta_table is not None:
             duckdb_table = duckdb.arrow(self.delta_table.to_pyarrow_dataset())
-            result = duckdb_table.query(virtual_table_name='daily_stock_price',
-                                        sql_query='SELECT symbol, max(date) AS latest_date FROM daily_stock_price GROUP BY symbol ORDER BY symbol')
-            df = result.to_df()
-            latest_dates = df.set_index('symbol').to_dict(orient='dict')['latest_date']
+            latest_dates_query = "SELECT symbol, max(date) AS latest_date FROM daily_stock_price GROUP BY symbol ORDER BY symbol;"
+            latest_dates_df = duckdb_table.query(virtual_table_name='daily_stock_price', sql_query=latest_dates_query).df()
+            latest_dates = latest_dates_df.set_index('symbol').to_dict(orient='dict')['latest_date']
             latest_dates = {k:pd.to_datetime(v).date() for k,v in latest_dates.items()}
         else:
-            latest_dates = {s:None for s in self.symbols}            
+            latest_dates = {}            
         
         return latest_dates
     
@@ -126,20 +134,31 @@ class DailyStockPriceDataset:
         except TableNotFoundError as e:
             self.delta_table = None
             
-        latest_dates = self._get_latest_dates()
-        self.latest_dates = {s:latest_dates.get(s, None) for s in self.symbols}
+        self.latest_dates = self._get_latest_dates()
         
     def _delete_delta_table(self) -> None:
         """Deletes the Delta table from cloud storage"""
         table_artifact_uris = list_objects(bucket_name=GCS_BUCKET_NAME, prefix=self.table_directory)
         for key in table_artifact_uris:
             delete_object(bucket_name=GCS_BUCKET_NAME, object_key=key)
+            
+        self._refresh_metadata()
                     
-    def sync_table(self, freshness_days : int = 1, num_threads : int = 1) -> None:
+    def sync_table(self, lookback_days : int = 0, freshness_days : int = 1, num_threads : int = 1) -> None:
         """Updates price data for all companies.
+        
+        Due to the lack of delete & update functionality in python delta-rs,
+        this method extracts incremental updates from PSE Edge, combines
+        old and new data with deduplication, and overwrites the existing
+        Delta table. Full dataset is fairly small so this is okay.
+        Once deletes and/or updates are added to python delta-rs, this is 
+        subject for updating as well.
 
         Parameters
         ----------
+        lookback_days : int, default 0
+            The number of days in the past to re-extract price data for.
+            
         freshness_days : int, default 1
             The acceptable data delay in number of days. By default, this is set to 1
             which means data for yesterday is the minimum acceptable value to consider
@@ -153,83 +172,103 @@ class DailyStockPriceDataset:
         None
 
         """
+                
+        # Generate unique folder name (for uniqueness)
+        timestamp_id = datetime.now().strftime('%Y%m%dT%H%M%S')
+        unique_id = ''.join(random.choice(string.ascii_letters) for _ in range(8))
+        job_output_directory = f'data/tmp/price/{timestamp_id}_{unique_id}'
         
-        def sync_symbol(symbol, freshness_days):
+        # Create directory
+        prepare_directory(f'{job_output_directory}/')
+        
+        # Placeholder for CSV file paths
+        csv_files = []
+
+        def extract_price_updates(symbol, lookback_days, freshness_days):
             
             target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
-            latest_date = self.latest_dates.get(symbol, None)
+            latest_date = self.latest_dates.get(symbol, datetime(1970,1,1).date())
             
             # Skip data extraction if conditions are satisfied
-            if latest_date is not None and latest_date>=target_latest_date:
+            if latest_date>=target_latest_date:
                 # Return empty data frame.
-                price_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
+                price_df = pd.DataFrame(columns=self.polars_schema.keys())
 
             # Extract new price data
             else:
                 if latest_date is not None: 
-                    start_date = (latest_date + timedelta(days=1)).strftime('%Y-%m-%d')
+                    start_date = (latest_date + timedelta(days=1-lookback_days)).strftime('%Y-%m-%d')
                 else:
                     start_date = None
 
+                # Extract data
                 price_df = get_stock_data(symbol, start_date=start_date, end_date=target_latest_date)
-                price_df = price_df.astype(self.pandas_schema)
                 
-            # Insert to Delta table
+            # Save to CSV
             if price_df.shape[0] == 0:
-                print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+                print(f'No new price data for: {symbol:6s}  |  Skipping.')
             else:
-                # Append new rows to table partition
-                write_deltalake(self.table_path, data=price_df, storage_options=storage_options, 
-                                partition_by=['symbol'], mode='append', schema=self.pyarrow_schema)
-                print(f'Synced price data for: {symbol:6s}  |  Inserted {price_df.shape[0]} records.')
-                
-                
-        parallel_execute(func = sync_symbol,
+                file_path = f'{job_output_directory}/{symbol}.csv'
+                price_df.to_csv(file_path, index=False)
+                csv_files.append(file_path)
+                print(f'Downloaded price data for: {symbol:6s}  |  {price_df.shape[0]} records.')
+
+        # Download price updates
+        parallel_execute(func = extract_price_updates,
                          args = self.symbols,
                          num_threads = num_threads,
+                         lookback_days = lookback_days,
                          freshness_days = freshness_days)
-
-        self._refresh_metadata()
         
-    def backfill_table(self, freshness_days : int = 1, num_threads : int = 1) -> None:
-        """Backfills price data for all companies.
-
-        Parameters
-        ----------
-        freshness_days : int, default 1
-            The acceptable data delay in number of days. By default, this is set to 1
-            which means data for yesterday is the minimum acceptable value to consider
-            that the price data is already up-to-date.
+        try:
+            # Read CSVs to Polars dataframe
+            updates = pl.read_csv(f'{job_output_directory}/*.csv', schema=self.polars_schema)
             
-        num_threads : int, default 1
-            The number of threads in parallel to use.
+            # Merge updates in memory
+            merge_sql = """
+             -- Duplicate main table in memory
+                CREATE OR REPLACE TABLE new_tbl AS (
+                    SELECT * FROM daily_stock_price
+                );
+
+             -- Deduplicate updates
+                CREATE OR REPLACE TABLE deduped_updates AS (
+                    SELECT * FROM updates QUALIFY row_number() OVER (partition by symbol, date order by extracted_at desc) = 1
+                );
+
+             -- Upsert rows
+                UPDATE new_tbl
+                    SET symbol = deduped_updates.symbol
+                      , date = deduped_updates.date
+                      , open = deduped_updates.open
+                      , high = deduped_updates.high
+                      , low = deduped_updates.low
+                      , close = deduped_updates.close
+                      , extracted_at = deduped_updates.extracted_at
+                    FROM deduped_updates
+                    WHERE new_tbl.symbol = deduped_updates.symbol
+                      AND new_tbl.date = deduped_updates.date;
+
+             -- Get entire updated table
+                SELECT *
+                FROM new_tbl;
+            """
+            updated_table = duckdb.sql(merge_sql).pl()
+
+            # Overwrite Delta table
+            updated_table.write_delta(self.table_path, storage_options=storage_options, mode='overwrite')
+                
+            # Re-fetch Delta table
+            self._refresh_metadata()
+
+            # Vacuum Delta table (remove obsolete files)
+            self.delta_table.vacuum(dry_run=False)
+
+        except pl.ComputeError as e:
+            print('No updates. Done.')
             
-        Returns
-        -------
-        None
-
-        """
-        
-        def backfill_symbol(symbol, freshness_days):
-            target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
-            price_df = get_stock_data(symbol, start_date=None, end_date=target_latest_date)
-                
-            # Insert to Delta table
-            if price_df.shape[0] == 0:
-                print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
-            else:
-                # Append new rows to table partition
-                write_deltalake(self.table_path, data=price_df, storage_options=storage_options, 
-                                partition_by=['symbol'], mode='overwrite', schema=self.pyarrow_schema,
-                                partition_filters=[('symbol','=',symbol)])
-                print(f'Synced price data for: {symbol:6s}  |  Inserted {price_df.shape[0]} records.')
-                
-        parallel_execute(func = backfill_symbol,
-                         args = self.symbols,
-                         num_threads = num_threads,
-                         freshness_days = freshness_days)
-
-        self._refresh_metadata()
+        # Clean up local artifacts
+        delete_files(csv_files)
 
         
 def sync(concurrency=1) -> None:
@@ -249,7 +288,8 @@ def backfill(concurrency=1) -> None:
     pse_companies.sync_table()
     
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
-    price_dataset.backfill_table(num_threads=concurrency)
+    price_dataset.sync_table(num_threads=concurrency, 
+                             lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
     
 
 def delete_tables() -> None:
