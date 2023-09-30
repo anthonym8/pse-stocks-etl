@@ -174,4 +174,4 @@ jobs:
           python -m src.main \
           --destination deltalake \
           --action sync \
-          --concurrency=4
+          --concurrency=1

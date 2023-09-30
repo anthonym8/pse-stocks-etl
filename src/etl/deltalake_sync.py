@@ -118,13 +118,12 @@ class DailyStockPriceDataset:
         """Fetches the current database state."""
         if self.delta_table is not None:
             duckdb_table = duckdb.arrow(self.delta_table.to_pyarrow_dataset())
-            result = duckdb_table.query(virtual_table_name='daily_stock_price',
-                                        sql_query='SELECT symbol, max(date) AS latest_date FROM daily_stock_price GROUP BY symbol ORDER BY symbol')
-            df = result.to_df()
-            latest_dates = df.set_index('symbol').to_dict(orient='dict')['latest_date']
+            latest_dates_query = "SELECT symbol, max(date) AS latest_date FROM daily_stock_price GROUP BY symbol ORDER BY symbol;"
+            latest_dates_df = duckdb_table.query(virtual_table_name='daily_stock_price', sql_query=latest_dates_query).df()
+            latest_dates = latest_dates_df.set_index('symbol').to_dict(orient='dict')['latest_date']
             latest_dates = {k:pd.to_datetime(v).date() for k,v in latest_dates.items()}
         else:
-            latest_dates = {s:None for s in self.symbols}            
+            latest_dates = {}            
         
         return latest_dates
     
@@ -135,8 +134,7 @@ class DailyStockPriceDataset:
         except TableNotFoundError as e:
             self.delta_table = None
             
-        latest_dates = self._get_latest_dates()
-        self.latest_dates = {s:latest_dates.get(s, None) for s in self.symbols}
+        self.latest_dates = self._get_latest_dates()
         
     def _delete_delta_table(self) -> None:
         """Deletes the Delta table from cloud storage"""
@@ -173,13 +171,13 @@ class DailyStockPriceDataset:
         
         csv_files = []
 
-        def extract_price_updates(symbol, freshness_days):
+        def extract_price_updates(symbol, lookback_days, freshness_days):
             
             target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
-            latest_date = self.latest_dates.get(symbol, None)
+            latest_date = self.latest_dates.get(symbol, datetime(1970,1,1).date())
             
             # Skip data extraction if conditions are satisfied
-            if latest_date is not None and latest_date>=target_latest_date:
+            if latest_date>=target_latest_date:
                 # Return empty data frame.
                 price_df = pd.DataFrame(columns=self.polars_schema.keys())
 
@@ -197,11 +195,10 @@ class DailyStockPriceDataset:
                 price_df = duckdb.sql("SELECT * FROM price_df \
                                        QUALIFY row_number() OVER (partition by symbol, date order by date) = 1;").df()
                 
-            # Insert to Delta table
+            # Save to CSV
             if price_df.shape[0] == 0:
                 print(f'No new price data for: {symbol:6s}  |  Skipping.')
             else:
-                # Save to CSV
                 file_path = f'{job_output_directory}/{symbol}.csv'
                 prepare_directory(file_path)
                 price_df.to_csv(file_path, index=False)
@@ -212,6 +209,7 @@ class DailyStockPriceDataset:
         parallel_execute(func = extract_price_updates,
                          args = self.symbols,
                          num_threads = num_threads,
+                         lookback_days = lookback_days,
                          freshness_days = freshness_days)
         
         try:
