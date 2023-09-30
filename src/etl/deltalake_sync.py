@@ -118,13 +118,14 @@ class DailyStockPriceDataset:
         """Fetches the current database state."""
         if self.delta_table is not None:
             duckdb_table = duckdb.arrow(self.delta_table.to_pyarrow_dataset())
-            latest_dates_query = "SELECT symbol, max(date) AS latest_date FROM daily_stock_price GROUP BY symbol ORDER BY symbol;"
-            latest_dates_df = duckdb_table.query(virtual_table_name='daily_stock_price', sql_query=latest_dates_query).df()
-            latest_dates = latest_dates_df.set_index('symbol').to_dict(orient='dict')['latest_date']
-            latest_dates = {k:pd.to_datetime(v).date() for k,v in latest_dates.items()}
         else:
-            latest_dates = {}            
-        
+            duckdb_table = duckdb.arrow(pl.DataFrame(schema=self.polars_schema).to_arrow())
+
+        latest_dates_query = "SELECT symbol, max(date) AS latest_date FROM daily_stock_price GROUP BY symbol ORDER BY symbol;"
+        latest_dates_df = duckdb_table.query(virtual_table_name='daily_stock_price', sql_query=latest_dates_query).df()
+        latest_dates = latest_dates_df.set_index('symbol').to_dict(orient='dict')['latest_date']
+        latest_dates = {k:pd.to_datetime(v).date() for k,v in latest_dates.items()}
+
         return latest_dates
     
     def _refresh_metadata(self) -> None:
@@ -226,32 +227,11 @@ class DailyStockPriceDataset:
             
             # Merge updates in memory
             merge_sql = """
-             -- Duplicate main table in memory
-                CREATE OR REPLACE TABLE new_tbl AS (
-                    SELECT * FROM daily_stock_price
-                );
-
-             -- Deduplicate updates
-                CREATE OR REPLACE TABLE deduped_updates AS (
-                    SELECT * FROM updates QUALIFY row_number() OVER (partition by symbol, date order by extracted_at desc) = 1
-                );
-
-             -- Upsert rows
-                UPDATE new_tbl
-                    SET symbol = deduped_updates.symbol
-                      , date = deduped_updates.date
-                      , open = deduped_updates.open
-                      , high = deduped_updates.high
-                      , low = deduped_updates.low
-                      , close = deduped_updates.close
-                      , extracted_at = deduped_updates.extracted_at
-                    FROM deduped_updates
-                    WHERE new_tbl.symbol = deduped_updates.symbol
-                      AND new_tbl.date = deduped_updates.date;
-
-             -- Get entire updated table
                 SELECT *
-                FROM new_tbl;
+                FROM ( SELECT * FROM daily_stock_price
+                       UNION ALL
+                       SELECT * FROM updates )
+                QUALIFY row_number() OVER (partition by symbol, date order by extracted_at desc) = 1;
             """
             updated_table = duckdb.sql(merge_sql).pl()
 
