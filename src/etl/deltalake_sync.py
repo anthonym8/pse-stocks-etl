@@ -141,6 +141,8 @@ class DailyStockPriceDataset:
         table_artifact_uris = list_objects(bucket_name=GCS_BUCKET_NAME, prefix=self.table_directory)
         for key in table_artifact_uris:
             delete_object(bucket_name=GCS_BUCKET_NAME, object_key=key)
+            
+        self._refresh_metadata()
                     
     def sync_table(self, freshness_days : int = 1, num_threads : int = 1) -> None:
         """Updates price data for all companies.
