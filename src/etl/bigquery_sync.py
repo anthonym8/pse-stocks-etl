@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from os import environ
 from typing import List
-from src.utils.pse_edge import get_listed_companies, get_stock_data
+from src.utils.pse_edge import get_listed_companies, get_stock_data, UnknownSymbolException
 from src.utils.bigquery import execute, query
 from src.utils.multithreading import parallel_execute
 from src.utils.misc import prepare_directory, delete_files
@@ -121,8 +121,7 @@ class DailyStockPriceDataset:
     
     def _refresh_metadata(self) -> None:
         """Initializes object metadata based from database state."""
-        latest_dates = self._get_latest_dates()
-        self.latest_dates = {s:latest_dates.get(s, None) for s in self.symbols}
+        self.latest_dates = self._get_latest_dates()
         
     def _delete_all_records(self) -> None:
         """Deletes all database records."""
@@ -166,99 +165,97 @@ class DailyStockPriceDataset:
         target_table_name = f'`{GCP_PROJECT_ID}`.`{BIGQUERY_DATASET_ID}`.daily_stock_price'
         ingest_table_name = f'`{GCP_PROJECT_ID}`.`{BIGQUERY_DATASET_ID}`.daily_stock_price__tmp_ingest__{timestamp_id}_{unique_id}'
                 
-        
-        def sync_symbol_data_to_gcs(symbol, lookback_days, freshness_days):
+        def sync_symbol_data_to_gcs(symbol, lookback_days, freshness_days, latest_dates_dict):
+            """Extract data from PSE Edge and upload to GCS"""
             
-            target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
-            latest_date = self.latest_dates.get(symbol, None)
-            
-            # Skip data extraction if conditions are satisfied
-            if lookback_days==0 and latest_date==target_latest_date:
-                # Return empty data frame.
-                price_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
-
-            # Extract new price data
-            else:
-                if latest_date is not None: 
-                    start_date = (latest_date + timedelta(days=1-lookback_days)).strftime('%Y-%m-%d')
-                else:
-                    start_date = None
-
-                price_df = get_stock_data(symbol, start_date=start_date)
-                
-            # Insert to database
-            if price_df.shape[0] == 0:
+            # Compute target start and end dates
+            current_end_date = latest_dates_dict.get(symbol, datetime(1970,1,1).date())
+            target_start_date = current_end_date + timedelta(days=1-lookback_days)
+            target_end_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
+                        
+            # Skip if conditions are satisfied
+            if lookback_days==0 and current_end_date==target_end_date:
                 print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+
             else:
-                # Save to CSV
-                file_path = f'{job_output_directory}/{symbol}.csv'
-                price_df.to_csv(file_path, index=False)
+                try:
+                    # Fetch data from API
+                    price_df = get_stock_data(symbol, start_date=target_start_date, end_date=target_end_date)
+
+                    # Deduplicate records
+                    price_df = price_df.loc[price_df.groupby(['date','symbol'])['close'].idxmax()]
+                    
+                    # Upload CSV to GCS
+                    if price_df.shape[0] > 0:
+                        # Save to CSV
+                        file_path = f'{job_output_directory}/{symbol}.csv'
+                        price_df.to_csv(file_path, index=False)
+
+                        # Upload to GCS
+                        upload_to_gcs(source_file_path=file_path, bucket_name=GCS_BUCKET_NAME, object_key=file_path)
+                        gcs_uploaded_files.append(file_path)
+
+                        # Delete local CSV file
+                        delete_files(file_path, verbose=False)
+                        print(f'Uploaded CSV to GCS:   {symbol:6s}  |  {price_df.shape[0]} records.')
+                    
+                    else:
+                        print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+
+                except UnknownSymbolException as e:
+                    print(f'Error: Unknown symbol: {symbol:6s}  |  Skipping.')
                 
-                # Upload to GCS
-                upload_to_gcs(source_file_path=file_path, bucket_name=GCS_BUCKET_NAME, object_key=file_path)
-                gcs_uploaded_files.append(file_path)
-                
-                # Delete local CSV file
-                delete_files(file_path, verbose=False)
-                
-                print(f'Uploaded price data to GCS for: {symbol:6s}  | {price_df.shape[0]} records.')
-                
+        # Download price updates and upload to GCS
         parallel_execute(func = sync_symbol_data_to_gcs,
                          args = self.symbols,
                          num_threads = num_threads,
                          lookback_days = lookback_days,
-                         freshness_days = freshness_days)
+                         freshness_days = freshness_days,
+                         latest_dates_dict = self.latest_dates)
         
         
         if len(gcs_uploaded_files) > 0:
             
             try:
-                ingest_sql_file = 'src/etl/sql/bigquery_dml__ingest_daily_stock_price.sql'
-                ingest_params = {
-                    'ingest_table': ingest_table_name,
-                    'target_table': target_table_name,
-                    'bucket_name': GCS_BUCKET_NAME,
-                    'job_output_directory': job_output_directory
-                }
+                # Load new data to staging table
+                print(f'Ingesting new records to {ingest_table_name}.')
+                execute(sql_file='src/etl/sql/bigquery_dml__ingest_daily_stock_price.sql', 
+                        parameters={ 'ingest_table': ingest_table_name,
+                                     'target_table': target_table_name,
+                                     'bucket_name': GCS_BUCKET_NAME,
+                                     'job_output_directory': job_output_directory })
 
-                execute(sql_file=ingest_sql_file, parameters=ingest_params, project_id=GCP_PROJECT_ID)
-                print(f'Ingested new records to {ingest_table_name}.')
-
-
-                # Ingest & merge data to BigQuery table
-                upsert_sql_file = 'src/etl/sql/bigquery_dml__upsert_daily_stock_price.sql'
-                upsert_params = {
-                    'ingest_table': ingest_table_name,
-                    'target_table': target_table_name,
-                }
-
-                execute(sql_file=upsert_sql_file, parameters=upsert_params, project_id=GCP_PROJECT_ID)
-                print(f'Merged new records to {target_table_name}.')
+                # Merge data to main table
+                print(f'Merging new records to {target_table_name}.')
+                execute(sql_file='src/etl/sql/bigquery_dml__upsert_daily_stock_price.sql', 
+                        parameters={ 'ingest_table': ingest_table_name,
+                                     'target_table': target_table_name })
                 
                 # Delete temporary ingest table
-                execute(sql_statement = f'DROP TABLE IF EXISTS {ingest_table_name}', project_id=GCP_PROJECT_ID)
-                print(f'Dropped temporary staging table.')
-
-
+                print(f'Dropping temporary staging table.')
+                execute(sql_statement = f'DROP TABLE IF EXISTS {ingest_table_name}')
+                
                 # Delete cloud storage objects
+                print(f'Deleting temporary objects on GCS.')
                 parallel_execute(func = lambda x: delete_object(bucket_name=GCS_BUCKET_NAME, object_key=x),
                                  args = gcs_uploaded_files,
                                  num_threads = num_threads)
-                print(f'Deleted temporary objects on GCS.')
+                
+                print('Done.')
 
             except Exception as e:  # Clean up in case an exception occurs
                 
                 # Delete temporary ingest table
-                execute(sql_statement = f'DROP TABLE IF EXISTS {ingest_table_name}', project_id=GCP_PROJECT_ID)
-                print(f'Dropped temporary staging table.')
-
-
+                print(f'Dropping temporary staging table.')
+                execute(sql_statement = f'DROP TABLE IF EXISTS {ingest_table_name}')
+                
                 # Delete cloud storage objects
+                print(f'Deleting temporary objects on GCS.')
                 parallel_execute(func = lambda x: delete_object(bucket_name=GCS_BUCKET_NAME, object_key=x),
                                  args = gcs_uploaded_files,
                                  num_threads = num_threads)
-                print(f'Deleted temporary objects on GCS.')
-
+                
+                print('Done.')
                 raise e
 
 
