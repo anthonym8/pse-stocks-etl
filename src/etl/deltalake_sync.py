@@ -15,7 +15,7 @@ from typing import List
 from deltalake import DeltaTable
 from deltalake.writer import write_deltalake
 from deltalake.exceptions import TableNotFoundError
-from src.utils.pse_edge import get_listed_companies, get_stock_data
+from src.utils.pse_edge import get_listed_companies, get_stock_data, UnknownSymbolException
 from src.utils.multithreading import parallel_execute
 from src.utils.gcs import list_objects, delete_object
 from src.utils.misc import prepare_directory, delete_files
@@ -185,47 +185,54 @@ class DailyStockPriceDataset:
         # Placeholder for CSV file paths
         csv_files = []
 
-        def extract_price_updates(symbol, lookback_days, freshness_days):
+        def extract_price_updates(symbol, lookback_days, freshness_days, latest_dates_dict):
+            """Extract price data and save to temporary CSVs."""
             
-            target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
-            latest_date = self.latest_dates.get(symbol, datetime(1970,1,1).date())
+            # Compute target start and end dates
+            current_end_date = latest_dates_dict.get(symbol, datetime(1970,1,1).date())
+            target_start_date = current_end_date + timedelta(days=1-lookback_days)
+            target_end_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
             
-            # Skip data extraction if conditions are satisfied
-            if latest_date>=target_latest_date:
-                # Return empty data frame.
-                price_df = pd.DataFrame(columns=self.polars_schema.keys())
+            # Skip if conditions are satisfied
+            if lookback_days==0 and current_end_date==target_end_date:
+                print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
 
-            # Extract new price data
+            # Else, extract data
             else:
-                if latest_date is not None: 
-                    start_date = (latest_date + timedelta(days=1-lookback_days)).strftime('%Y-%m-%d')
-                else:
-                    start_date = None
+                try:
+                    # Fetch data from API
+                    price_df = get_stock_data(symbol, start_date=target_start_date, end_date=target_end_date)
 
-                # Extract data
-                price_df = get_stock_data(symbol, start_date=start_date, end_date=target_latest_date)
-                
-            # Save to CSV
-            if price_df.shape[0] == 0:
-                print(f'No new price data for: {symbol:6s}  |  Skipping.')
-            else:
-                file_path = f'{job_output_directory}/{symbol}.csv'
-                price_df.to_csv(file_path, index=False)
-                csv_files.append(file_path)
-                print(f'Downloaded price data for: {symbol:6s}  |  {price_df.shape[0]} records.')
+                    # Deduplicate records
+                    price_df = price_df.loc[price_df.groupby(['date','symbol'])['close'].idxmax()]
+                    
+                    # Save to CSV
+                    if price_df.shape[0] > 0:
+                        file_path = f'{job_output_directory}/{symbol}.csv'
+                        price_df.to_csv(file_path, index=False)
+                        csv_files.append(file_path)
+                        print(f'Saved data to CSV for: {symbol:6s}  |  {price_df.shape[0]} records.')
+                    else:
+                        print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
 
+                except UnknownSymbolException as e:
+                    print(f'Error: Unknown symbol: {symbol:6s}  |  Skipping.')
+
+                    
         # Download price updates
         parallel_execute(func = extract_price_updates,
                          args = self.symbols,
                          num_threads = num_threads,
                          lookback_days = lookback_days,
-                         freshness_days = freshness_days)
+                         freshness_days = freshness_days,
+                         latest_dates_dict = self.latest_dates)
         
         try:
             # Read CSVs to Polars dataframe
             updates = pl.read_csv(f'{job_output_directory}/*.csv', schema=self.polars_schema)
             
             # Merge updates in memory
+            print('Merging updates...')
             merge_sql = """
                 SELECT *
                 FROM ( SELECT * FROM daily_stock_price
@@ -236,13 +243,17 @@ class DailyStockPriceDataset:
             updated_table = duckdb.sql(merge_sql).pl()
 
             # Overwrite Delta table
+            print('Overwriting Delta table...')
             updated_table.write_delta(self.table_path, storage_options=storage_options, mode='overwrite')
                 
             # Re-fetch Delta table
             self._refresh_metadata()
 
             # Vacuum Delta table (remove obsolete files)
+            print('Vacuuming Delta table...')
             self.delta_table.vacuum(dry_run=False)
+            
+            print('Done.')
 
         except pl.ComputeError as e:
             print('No updates. Done.')

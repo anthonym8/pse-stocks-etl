@@ -5,13 +5,13 @@
 
 import pandas as pd
 from datetime import datetime, timedelta
-from src.utils.pse_edge import get_listed_companies, get_stock_data
+from src.utils.pse_edge import get_listed_companies, get_stock_data, UnknownSymbolException
 from src.utils.postgres import query
 from src.utils.multithreading import parallel_execute
 from typing import List
     
     
-class PSECompanies:
+class PSECompaniesDataset:
     """Dataset class for PSE-listed companies."""
     
     def __init__(self):
@@ -115,8 +115,7 @@ class DailyStockPriceDataset:
     
     def _refresh_metadata(self) -> None:
         """Initializes object metadata based from database state."""
-        latest_dates = self._get_latest_dates()
-        self.latest_dates = {s:latest_dates.get(s, None) for s in self.symbols}
+        self.latest_dates = self._get_latest_dates()
         
     def _delete_all_records(self) -> None:
         """Deletes all database records."""
@@ -196,38 +195,44 @@ class DailyStockPriceDataset:
 
         """
         
-        def sync_symbol(symbol, lookback_days, freshness_days):
+        def sync_symbol(symbol, lookback_days, freshness_days, latest_dates_dict):
+            """Extract and load price data per symbol."""
             
-            target_latest_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
-            latest_date = self.latest_dates.get(symbol, None)
+            # Compute target start and end dates
+            current_end_date = latest_dates_dict.get(symbol, datetime(1970,1,1).date())
+            target_start_date = current_end_date + timedelta(days=1-lookback_days)
+            target_end_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
             
-            # Skip data extraction if conditions are satisfied
-            if lookback_days==0 and latest_date==target_latest_date:
-                # Return empty data frame.
-                price_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
-
-            # Extract new price data
-            else:
-                if latest_date is not None: 
-                    start_date = (latest_date + timedelta(days=1-lookback_days)).strftime('%Y-%m-%d')
-                else:
-                    start_date = None
-
-                price_df = get_stock_data(symbol, start_date=start_date)
-                
-            # Insert to database
-            if price_df.shape[0] == 0:
+            # Skip if conditions are satisfied
+            if lookback_days==0 and current_end_date==target_end_date:
                 print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+
+            # Else, run sync job
             else:
-                self._insert_price_data_to_db(price_df, verbose=False)
-                print(f'Synced price data for: {symbol:6s}  |  Inserted {price_df.shape[0]} records.')
+                try:
+                    # Fetch data from API
+                    price_df = get_stock_data(symbol, start_date=target_start_date, end_date=target_end_date)
+
+                    # Deduplicate records
+                    price_df = price_df.loc[price_df.groupby(['date','symbol'])['close'].idxmax()]
+                    
+                    # Insert to database
+                    if price_df.shape[0] > 0:
+                        self._insert_price_data_to_db(price_df, verbose=False)
+                        print(f'Synced price data for: {symbol:6s}  |  Inserted {price_df.shape[0]} records.')
+                    else:
+                        print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+
+                except UnknownSymbolException as e:
+                    print(f'Error: Unknown symbol: {symbol:6s}  |  Skipping.')
                 
                 
         parallel_execute(func = sync_symbol,
                          args = self.symbols,
                          num_threads = num_threads,
                          lookback_days = lookback_days,
-                         freshness_days = freshness_days)
+                         freshness_days = freshness_days,
+                         latest_dates_dict = self.latest_dates)
 
         self._refresh_metadata()
 
@@ -235,7 +240,7 @@ class DailyStockPriceDataset:
 def sync(concurrency=1) -> None:
     """Executes an incremental sync job."""
     
-    pse_companies = PSECompanies()
+    pse_companies = PSECompaniesDataset()
     pse_companies.sync_db()
     
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
@@ -245,7 +250,7 @@ def sync(concurrency=1) -> None:
 def backfill(concurrency=1) -> None:
     """Executes a complete backfill job."""
     
-    pse_companies = PSECompanies()
+    pse_companies = PSECompaniesDataset()
     pse_companies.sync_db()
     
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)

@@ -18,7 +18,7 @@ from delta.tables import DeltaTable
 from delta import configure_spark_with_delta_pip
 
 # Custom modules
-from pse_edge import get_listed_companies, get_stock_data
+from pse_edge import get_listed_companies, get_stock_data, UnknownSymbolException
 from multithreading import parallel_execute
 
 
@@ -236,31 +236,44 @@ class DailyStockPriceDataset:
         # Create temp data folder if it doesn't exist yet
         prepare_directory(f'{job_output_directory}/')
         
-        def download_price_updates(symbol, lookback_days, freshness_days):
+        def download_price_updates(symbol, lookback_days, freshness_days, latest_dates_dict):
             """Fetches incremental price data updates."""
-            latest_date = pd.to_datetime(self.latest_dates.get(symbol, '1970-01-01')).date()
+            
+            # Compute target start and end dates
+            current_end_date = pd.to_datetime(latest_dates_dict.get(symbol, '1970-01-01')).date()
+            target_start_date = current_end_date + timedelta(days=1-lookback_days)
             target_end_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
-            target_start_date = latest_date + timedelta(days=1-lookback_days)
             
-            # Fetch data from API
-            price_df = get_stock_data(symbol, start_date=target_start_date, end_date=target_end_date)
-            
-            # Deduplicate records
-            price_df = price_df.loc[price_df.groupby(['date','symbol'])['close'].idxmax()]
-                
-            # Save to CSV
-            if price_df.shape[0] == 0:
-                print(f'Fetched price data for: {symbol:6s}  |  No price updates available. Skipping.')
+            # Skip if conditions are satisfied
+            if lookback_days==0 and current_end_date==target_end_date:
+                print(f'Data is up-to-date for: {symbol:6s}  |  No new records. Skipping.')
+
             else:
-                price_df.to_csv(f'{job_output_directory}/{symbol}.csv', index=False)
-                print(f'Fetched price data for: {symbol:6s}  |  Wrote {price_df.shape[0]} records to CSV.')
+                try:
+                    # Fetch data from API
+                    price_df = get_stock_data(symbol, start_date=target_start_date, end_date=target_end_date)
+
+                    # Deduplicate records
+                    price_df = price_df.loc[price_df.groupby(['date','symbol'])['close'].idxmax()]
+
+                    # Save to CSV
+                    if price_df.shape[0] > 0:
+                        price_df.to_csv(f'{job_output_directory}/{symbol}.csv', index=False)
+                        print(f'Fetched price data for: {symbol:6s}  |  Wrote {price_df.shape[0]} records to CSV.')
+                    
+                    else:
+                        print(f'Fetched price data for: {symbol:6s}  |  No price updates available. Skipping.')
+
+                except UnknownSymbolException as e:
+                    print(f'Error: Unknown symbol:  {symbol:6s}  |  Skipping.')
 
         # Fetch new price data for all symbols
         parallel_execute(func = download_price_updates,
                          args = self.symbols,
                          num_threads = num_threads,
                          lookback_days = lookback_days,
-                         freshness_days = freshness_days)
+                         freshness_days = freshness_days,
+                         latest_dates_dict = self.latest_dates)
         
         # Load complete dataset to Spark DataFrame
         try:
