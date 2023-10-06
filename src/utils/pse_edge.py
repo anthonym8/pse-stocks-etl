@@ -254,5 +254,8 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
         prices_df['date'] = pd.to_datetime(prices_df['date'], utc=True).dt.strftime('%Y-%m-%d')
         prices_df['extracted_at'] = pd.to_datetime(extracted_at, utc=True).strftime('%Y-%m-%d %H:%M:%S')
         prices_df = prices_df[['symbol','date','open','high','low','close','extracted_at']]
+        
+        # Deduplicate records
+        prices_df = prices_df.loc[prices_df.groupby(['date','symbol'])['close'].idxmax()]
             
     return prices_df
