@@ -115,8 +115,7 @@ class DailyStockPriceDataset:
     
     def _refresh_metadata(self) -> None:
         """Initializes object metadata based from database state."""
-        latest_dates = self._get_latest_dates()
-        self.latest_dates = {s:latest_dates.get(s, None) for s in self.symbols}
+        self.latest_dates = self._get_latest_dates()
         
     def _delete_all_records(self) -> None:
         """Deletes all database records."""
@@ -199,25 +198,23 @@ class DailyStockPriceDataset:
         def sync_symbol(symbol, lookback_days, freshness_days, latest_dates_dict):
             """Extract and load price data per symbol."""
             
-            # Compute target start date
-            current_latest_date = latest_dates_dict.get(symbol, None)
-            if current_latest_date is not None: 
-                target_start_date = (current_latest_date + timedelta(days=1-lookback_days)).strftime('%Y-%m-%d')
-            else:
-                target_start_date = None
-            
-            # Compute target end date
+            # Compute target start and end dates
+            current_end_date = latest_dates_dict.get(symbol, datetime(1970,1,1).date())
+            target_start_date = current_end_date + timedelta(days=1-lookback_days)
             target_end_date = (datetime.utcnow() + timedelta(hours=8)).date() - timedelta(days=freshness_days)
             
             # Skip if conditions are satisfied
-            if lookback_days==0 and current_latest_date==target_end_date:
+            if lookback_days==0 and current_end_date==target_end_date:
                 print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
 
             # Else, run sync job
             else:
                 try:
-                    # Extract data
+                    # Fetch data from API
                     price_df = get_stock_data(symbol, start_date=target_start_date, end_date=target_end_date)
+
+                    # Deduplicate records
+                    price_df = price_df.loc[price_df.groupby(['date','symbol'])['close'].idxmax()]
                     
                     # Insert to database
                     if price_df.shape[0] > 0:
