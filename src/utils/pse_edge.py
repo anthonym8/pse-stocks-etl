@@ -230,7 +230,8 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
             else:
                 prices_df = pd.DataFrame(chart_data)
                 prices_df['symbol'] = symbol
-                prices_df['CHART_DATE'] = pd.to_datetime(prices_df['CHART_DATE'], utc=True)
+                prices_df['CHART_DATE'] = pd.to_datetime(prices_df['CHART_DATE'], utc=True, 
+                                                         infer_datetime_format=True, format='mixed')
                 prices_df = prices_df.rename(columns={
                     'OPEN':'open',
                     'HIGH':'high',
