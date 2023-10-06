@@ -159,6 +159,9 @@ class DailyStockPriceDataset:
         unique_id = ''.join(random.choice(string.ascii_letters) for _ in range(8))
         job_output_directory = f'data/{timestamp_id}_{unique_id}'
         
+        # Create directory
+        prepare_directory(f'{job_output_directory}/')
+        
         # Prepare BigQuery table identifiers
         target_table_name = f'`{GCP_PROJECT_ID}`.`{BIGQUERY_DATASET_ID}`.daily_stock_price'
         ingest_table_name = f'`{GCP_PROJECT_ID}`.`{BIGQUERY_DATASET_ID}`.daily_stock_price__tmp_ingest__{timestamp_id}_{unique_id}'
@@ -189,7 +192,6 @@ class DailyStockPriceDataset:
             else:
                 # Save to CSV
                 file_path = f'{job_output_directory}/{symbol}.csv'
-                prepare_directory(file_path)
                 price_df.to_csv(file_path, index=False)
                 
                 # Upload to GCS
