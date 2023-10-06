@@ -60,6 +60,13 @@ COMPANY_SEARCH_DEFAULT_PAYLOAD = {
 }
 
 
+class UnknownSymbolException(Exception):
+    """Error class for invalid PSE symbols."""
+    def __init__(self, symbol):
+        self.symbol = symbol
+        super().__init__(f"Symbol '{symbol}' was not found in PSE Edge.")
+
+
 def get_listed_companies() -> pd.DataFrame:
     """Extracts a list of all PSE-listed companies.
     
@@ -131,40 +138,44 @@ def get_company_info(symbol: str) -> dict:
         r = s.get(COMPANY_NAME_SEARCH_URL.format(symbol))
         
     # Extract company info from response
-    search_results = r.json()
-    response_dict = [x for x in search_results if x['symbol']==symbol][0]
-    company_id = response_dict['cmpyId']
-    company_name = response_dict['cmpyNm']
-        
-    # Get company metadata, prepare request payload
-    payload = dict(COMPANY_SEARCH_DEFAULT_PAYLOAD)
-    payload['companyId'] = company_id
-    payload['keyword'] = company_id
-    payload['sortType'] = 'cmpy'
+    search_results = [x for x in r.json() if x['symbol']==symbol]
+    if len(search_results) > 0:
+        response_dict = [x for x in search_results if x['symbol']==symbol][0]
+        company_id = response_dict['cmpyId']
+        company_name = response_dict['cmpyNm']
 
-    # Get company metadata, submit request
-    with Session() as s:
-        r = s.post(COMPANY_SEARCH_URL, data=payload, headers=COMPANY_SEARCH_HEADERS)
+        # Get company metadata, prepare request payload
+        payload = dict(COMPANY_SEARCH_DEFAULT_PAYLOAD)
+        payload['companyId'] = company_id
+        payload['keyword'] = company_id
+        payload['sortType'] = 'cmpy'
 
-    # Extract company info from response
-    soup = bs.BeautifulSoup(r.text, 'html5lib')
-    table_elements = soup.findAll('td')
-    company_info = {'symbol':symbol,
-                    'company_name':company_name,
-                    'company_id':company_id}
-        
-    # Extract PSE Edge security ID
-    attribute_str = list(table_elements[0].children)[0].get('onclick')
-    _, company_info['security_id'] = attribute_str.replace('cmDetail(','').replace(');return false;','').replace("'","").split(',')
+        # Get company metadata, submit request
+        with Session() as s:
+            r = s.post(COMPANY_SEARCH_URL, data=payload, headers=COMPANY_SEARCH_HEADERS)
 
-    # Extract sector
-    company_info['sector'] = table_elements[2].text
-        
-    # Extract subsector
-    company_info['subsector'] = table_elements[3].text
-        
-    # Extract listing date
-    company_info['listing_date'] = pd.to_datetime(table_elements[4].text, utc=True).strftime('%Y-%m-%d')
+        # Extract company info from response
+        soup = bs.BeautifulSoup(r.text, 'html5lib')
+        table_elements = soup.findAll('td')
+        company_info = {'symbol':symbol,
+                        'company_name':company_name,
+                        'company_id':company_id}
+
+        # Extract PSE Edge security ID
+        attribute_str = list(table_elements[0].children)[0].get('onclick')
+        _, company_info['security_id'] = attribute_str.replace('cmDetail(','').replace(');return false;','').replace("'","").split(',')
+
+        # Extract sector
+        company_info['sector'] = table_elements[2].text
+
+        # Extract subsector
+        company_info['subsector'] = table_elements[3].text
+
+        # Extract listing date
+        company_info['listing_date'] = pd.to_datetime(table_elements[4].text, utc=True).strftime('%Y-%m-%d')
+
+    else:
+        raise UnknownSymbolException(symbol)
         
     return company_info
 
@@ -192,6 +203,9 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
         
     """
     
+    EMPTY_PRICES_DF = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
+    
+    # Search company by symbol
     company_info = get_company_info(symbol)
     
     # Impute dates
@@ -200,7 +214,7 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
 
     if end_date is None:
         end_date = datetime.now().strftime('%Y-%m-%d')
-        
+
     # Prepare request payload
     payload = {
         'cmpy_id': company_info['company_id'],
@@ -208,7 +222,7 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
         'startDate': pd.to_datetime(start_date, utc=True).strftime('%m-%d-%Y'),
         'endDate': pd.to_datetime(end_date, utc=True).strftime('%m-%d-%Y'),
     }
-    
+
     # Prepare request headers
     headers = dict(STOCK_DATA_HEADERS)
     headers['Referer'] = headers['Referer'].format(company_id=company_info['company_id'])
@@ -220,10 +234,10 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
     # Extract data from response
     chart_data = r.json()['chartData']
     extracted_at = r.headers['Date']
-    
+
     # Format data
     if len(chart_data) == 0:
-        prices_df = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
+        prices_df = EMPTY_PRICES_DF
 
     else:
         prices_df = pd.DataFrame(chart_data)
@@ -240,5 +254,5 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
         prices_df['date'] = pd.to_datetime(prices_df['date'], utc=True).dt.strftime('%Y-%m-%d')
         prices_df['extracted_at'] = pd.to_datetime(extracted_at, utc=True).strftime('%Y-%m-%d %H:%M:%S')
         prices_df = prices_df[['symbol','date','open','high','low','close','extracted_at']]
-
+            
     return prices_df
