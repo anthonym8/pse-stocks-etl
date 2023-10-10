@@ -176,7 +176,7 @@ class DailyStockPriceDataset:
                         
             # Skip if conditions are satisfied
             if lookback_days==0 and current_end_date==target_end_date:
-                logger.info(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+                logger.info(f'Table is up-to-date:   {symbol:6s}  |  Skipping.')
 
             else:
                 try:
