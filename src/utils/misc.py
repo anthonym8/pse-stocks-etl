@@ -5,6 +5,7 @@
 
 import os
 from jinja2 import Template
+from src import logger
 
 
 def read_sql_file(sql_file):
@@ -96,11 +97,11 @@ def delete_files(x, verbose=True):
     def delete_file(file_path):
         try:
             os.remove(file_path)
-            if verbose: print(f"File '{file_path}' has been deleted.")
+            logger.info(f"File '{file_path}' has been deleted.")
         except FileNotFoundError:
-            if verbose: print(f"File '{file_path}' not found, no action taken.")
+            logger.exception(f"File '{file_path}' not found, no action taken.")
         except Exception as e:
-            if verbose: print(f"An error occurred while trying to delete '{file_path}': {str(e)}")
+            logger.exception(f"An error occurred while trying to delete '{file_path}'.")
             
     if type(x) == str:
         delete_file(x)
