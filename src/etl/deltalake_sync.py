@@ -19,6 +19,7 @@ from src.utils.pse_edge import get_listed_companies, get_stock_data, UnknownSymb
 from src.utils.multithreading import parallel_execute
 from src.utils.gcs import list_objects, delete_object
 from src.utils.misc import prepare_directory, delete_files
+from src import logger
 
 
 load_dotenv('.env')
@@ -81,10 +82,12 @@ class PSECompaniesDataset:
         
         # Write to Delta table
         polars_df.write_delta(self.table_path, storage_options=storage_options, mode='overwrite', overwrite_schema=True)        
+        logger.info(f"Wrote to Delta table: {self.table_path}")
         self._refresh_metadata()
         
         # Vacuum Delta table (remove obsolete files)
         self.delta_table.vacuum(dry_run=False, retention_hours=0, enforce_retention_duration=False)
+        logger.info("Vacuumed Delta table.")
         
         # Delete local artifacts
         delete_files([file_path])
@@ -195,7 +198,7 @@ class DailyStockPriceDataset:
             
             # Skip if conditions are satisfied
             if lookback_days==0 and current_end_date==target_end_date:
-                print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+                logger.info(f'Table is up-to-date:   {symbol:6s}  |  Skipping.')
 
             # Else, extract data
             else:
@@ -211,12 +214,12 @@ class DailyStockPriceDataset:
                         file_path = f'{job_output_directory}/{symbol}.csv'
                         price_df.to_csv(file_path, index=False)
                         csv_files.append(file_path)
-                        print(f'Saved data to CSV for: {symbol:6s}  |  {price_df.shape[0]} records.')
+                        logger.info(f'Saved data to CSV for: {symbol:6s}  |  {price_df.shape[0]} records.')
                     else:
-                        print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+                        logger.info(f'Zero records returned: {symbol:6s}  |  Skipping.')
 
                 except UnknownSymbolException as e:
-                    print(f'Error: Unknown symbol: {symbol:6s}  |  Skipping.')
+                    logger.warning(f'Error: Unknown symbol: {symbol:6s}  |  Skipping.')
 
                     
         # Download price updates
@@ -232,7 +235,7 @@ class DailyStockPriceDataset:
             updates = pl.read_csv(f'{job_output_directory}/*.csv', schema=self.polars_schema)
             
             # Merge updates in memory
-            print('Merging updates...')
+            logger.info('Merging updates...')
             merge_sql = """
                 SELECT *
                 FROM ( SELECT * FROM daily_stock_price
@@ -243,20 +246,20 @@ class DailyStockPriceDataset:
             updated_table = duckdb.sql(merge_sql).pl()
 
             # Overwrite Delta table
-            print('Overwriting Delta table...')
+            logger.info('Overwriting Delta table...')
             updated_table.write_delta(self.table_path, storage_options=storage_options, mode='overwrite')
                 
             # Re-fetch Delta table
             self._refresh_metadata()
 
             # Vacuum Delta table (remove obsolete files)
-            print('Vacuuming Delta table...')
+            logger.info('Vacuuming Delta table...')
             self.delta_table.vacuum(dry_run=False)
             
-            print('Done.')
+            logger.info('Done.')
 
         except pl.ComputeError as e:
-            print('No updates. Done.')
+            logger.info('No updates. Done.')
             
         # Clean up local artifacts
         delete_files(csv_files)
@@ -265,33 +268,43 @@ class DailyStockPriceDataset:
 def sync(concurrency=1) -> None:
     """Executes an incremental sync job."""
     
+    logger.info("Syncing companies data...")
     pse_companies = PSECompaniesDataset()
     pse_companies.sync_table()
     
+    logger.info("Syncing price data...")
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset.sync_table(num_threads=concurrency)
+    
+    logger.info("Done.")
     
     
 def backfill(concurrency=1) -> None:
     """Executes a complete backfill job."""
     
+    logger.info("Running backfill for companies data...")
     pse_companies = PSECompaniesDataset()
     pse_companies.sync_table()
     
+    logger.info("Running backfill for price data...")
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset.sync_table(num_threads=concurrency, 
                              lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
     
+    logger.info("Done.")
 
 def delete_tables() -> None:
     """Deletes existing Delta tables."""
     
+    logger.info("Deleting Delta table...")
     pse_companies = PSECompaniesDataset()
     pse_companies._delete_delta_table()
     
+    logger.info("Deleting Delta table...")
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset._delete_delta_table()
     
+    logger.info("Done.")
 
 if __name__ == '__main__':
     
