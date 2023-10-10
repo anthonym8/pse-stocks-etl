@@ -3,7 +3,18 @@
 
 import threading
 from queue import Queue
-from src import logger
+import logging
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s]: %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 
 def parallel_execute(func, args, num_threads=1, **kwargs):
