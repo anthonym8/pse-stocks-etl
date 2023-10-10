@@ -9,6 +9,7 @@ from src.utils.pse_edge import get_listed_companies, get_stock_data, UnknownSymb
 from src.utils.postgres import query
 from src.utils.multithreading import parallel_execute
 from typing import List
+from src import logger
     
     
 class PSECompaniesDataset:
@@ -50,7 +51,7 @@ class PSECompaniesDataset:
         source_data = get_listed_companies()
         
         # Insert new data to DB
-        print('Inserting rows to database.')
+        logger.info('Inserting rows to database.')
 
         INSERT_STMT_TEMPLATE = r"""
             INSERT INTO pse.company (symbol, company_name, sector, subsector, listing_date, extracted_at)
@@ -77,7 +78,7 @@ class PSECompaniesDataset:
             rows_to_insert.append(row_str)
 
             if (len(rows_to_insert) == batch_size) or (idx+1 == n_companies):
-                print(f'  {idx+1} out of {n_companies}')
+                logger.info(f'  {idx+1} out of {n_companies}')
                 stmt = INSERT_STMT_TEMPLATE.format(tuples=',\n           '.join(rows_to_insert))
                 query(stmt=stmt, retrieve_result=False)
                 rows_to_insert = []
@@ -122,7 +123,7 @@ class DailyStockPriceDataset:
         query("DELETE FROM pse.daily_stock_price;", retrieve_result=False)
         self._refresh_metadata()
         
-    def _insert_price_data_to_db(self, df: pd.DataFrame, batch_size: int = 3000, verbose: bool = True) -> None:
+    def _insert_price_data_to_db(self, df: pd.DataFrame, batch_size: int = 3000) -> None:
         """Inserts price data records to the database.
 
         Parameters
@@ -132,9 +133,6 @@ class DailyStockPriceDataset:
 
         batch_size : int, default 100
             The number of records to insert at a time.
-            
-        verbose : bool, default True
-            Logs progress messages to console when set to True.
 
         Returns
         -------
@@ -168,7 +166,7 @@ class DailyStockPriceDataset:
             rows_to_insert.append(row_str)
 
             if (len(rows_to_insert) == batch_size) or (idy+1 == n_rows):
-                if verbose: print(f'  Inserted {len(rows_to_insert)} records.')
+                logger.info(f"  {idx+1} records out of {n_companies} inserted.")
                 stmt = INSERT_STMT_TEMPLATE.format(tuples = ',\n           '.join(rows_to_insert))
                 query(stmt=stmt, retrieve_result=False)
                 rows_to_insert = []
@@ -205,7 +203,7 @@ class DailyStockPriceDataset:
             
             # Skip if conditions are satisfied
             if lookback_days==0 and current_end_date==target_end_date:
-                print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+                logger.info(f'Table is up-to-date:   {symbol:6s}  |  Skipping.')
 
             # Else, run sync job
             else:
@@ -218,13 +216,13 @@ class DailyStockPriceDataset:
                     
                     # Insert to database
                     if price_df.shape[0] > 0:
-                        self._insert_price_data_to_db(price_df, verbose=False)
-                        print(f'Synced price data for: {symbol:6s}  |  Inserted {price_df.shape[0]} records.')
+                        self._insert_price_data_to_db(price_df)
+                        logger.info(f'Synced price data for: {symbol:6s}  |  Inserted {price_df.shape[0]} records.')
                     else:
-                        print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+                        logger.info(f'Zero records returned: {symbol:6s}  |  Skipping.')
 
                 except UnknownSymbolException as e:
-                    print(f'Error: Unknown symbol: {symbol:6s}  |  Skipping.')
+                    logger.warning(f'Error: Unknown symbol: {symbol:6s}  |  Skipping.')
                 
                 
         parallel_execute(func = sync_symbol,
@@ -240,24 +238,31 @@ class DailyStockPriceDataset:
 def sync(concurrency=1) -> None:
     """Executes an incremental sync job."""
     
+    logger.info("Syncing companies data...")
     pse_companies = PSECompaniesDataset()
     pse_companies.sync_db()
     
+    logger.info("Syncing price data...")
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset.sync_db(num_threads=concurrency, lookback_days=0)
+    
+    logger.info("Done.")
     
     
 def backfill(concurrency=1) -> None:
     """Executes a complete backfill job."""
     
+    logger.info("Running backfill for companies data...")
     pse_companies = PSECompaniesDataset()
     pse_companies.sync_db()
     
+    logger.info("Running backfill for price data...")
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset.sync_db(num_threads=concurrency, 
                           lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
     
-
+    logger.info("Done.")
+    
 if __name__ == '__main__':
     
     sync()

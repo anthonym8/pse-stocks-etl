@@ -16,6 +16,7 @@ from src.utils.bigquery import execute, query
 from src.utils.multithreading import parallel_execute
 from src.utils.misc import prepare_directory, delete_files
 from src.utils.gcs import upload_to_gcs, delete_object
+from src import logger
 
 
 load_dotenv('.env')
@@ -65,7 +66,7 @@ class PSECompanies:
         source_data = get_listed_companies()
         
         # Insert new data to DB
-        print('Inserting rows to database.')
+        logger.info('Inserting rows to database.')
         rows_to_insert = []
         n_companies = source_data.shape[0]
         for idx in range(n_companies):
@@ -77,7 +78,7 @@ class PSECompanies:
             rows_to_insert.append(row_str)
 
             if (len(rows_to_insert) == batch_size) or (idx+1 == n_companies):
-                print(f'  {idx+1} out of {n_companies}')
+                logger.info(f"  {idx+1} records out of {n_companies} inserted.")
                 parameters = {
                     'project_id': GCP_PROJECT_ID,
                     'dataset_id': BIGQUERY_DATASET_ID,
@@ -175,7 +176,7 @@ class DailyStockPriceDataset:
                         
             # Skip if conditions are satisfied
             if lookback_days==0 and current_end_date==target_end_date:
-                print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+                logger.info(f'Table is up-to-date:   {symbol:6s}  |  Skipping.')
 
             else:
                 try:
@@ -197,13 +198,13 @@ class DailyStockPriceDataset:
 
                         # Delete local CSV file
                         delete_files(file_path, verbose=False)
-                        print(f'Uploaded CSV to GCS:   {symbol:6s}  |  {price_df.shape[0]} records.')
+                        logger.info(f'Uploaded CSV to GCS:   {symbol:6s}  |  {price_df.shape[0]} records.')
                     
                     else:
-                        print(f'Synced price data for: {symbol:6s}  |  No new records. Skipping.')
+                        logger.info(f'Zero records returned: {symbol:6s}  |  Skipping.')
 
                 except UnknownSymbolException as e:
-                    print(f'Error: Unknown symbol: {symbol:6s}  |  Skipping.')
+                    logger.warning(f'Error: Unknown symbol: {symbol:6s}  |  Skipping.')
                 
         # Download price updates and upload to GCS
         parallel_execute(func = sync_symbol_data_to_gcs,
@@ -218,7 +219,7 @@ class DailyStockPriceDataset:
             
             try:
                 # Load new data to staging table
-                print(f'Ingesting new records to {ingest_table_name}.')
+                logger.info(f'Ingesting new records to {ingest_table_name}.')
                 execute(sql_file='src/etl/sql/bigquery_dml__ingest_daily_stock_price.sql', 
                         parameters={ 'ingest_table': ingest_table_name,
                                      'target_table': target_table_name,
@@ -226,36 +227,37 @@ class DailyStockPriceDataset:
                                      'job_output_directory': job_output_directory })
 
                 # Merge data to main table
-                print(f'Merging new records to {target_table_name}.')
+                logger.info(f'Merging new records to {target_table_name}.')
                 execute(sql_file='src/etl/sql/bigquery_dml__upsert_daily_stock_price.sql', 
                         parameters={ 'ingest_table': ingest_table_name,
                                      'target_table': target_table_name })
                 
                 # Delete temporary ingest table
-                print(f'Dropping temporary staging table.')
+                logger.info(f'Dropping temporary staging table.')
                 execute(sql_statement = f'DROP TABLE IF EXISTS {ingest_table_name}')
                 
                 # Delete cloud storage objects
-                print(f'Deleting temporary objects on GCS.')
+                logger.info(f'Deleting temporary objects on GCS.')
                 parallel_execute(func = lambda x: delete_object(bucket_name=GCS_BUCKET_NAME, object_key=x),
                                  args = gcs_uploaded_files,
                                  num_threads = num_threads)
                 
-                print('Done.')
+                logger.info('Done.')
 
             except Exception as e:  # Clean up in case an exception occurs
                 
                 # Delete temporary ingest table
-                print(f'Dropping temporary staging table.')
+                logger.info(f'Dropping temporary staging table.')
                 execute(sql_statement = f'DROP TABLE IF EXISTS {ingest_table_name}')
                 
                 # Delete cloud storage objects
-                print(f'Deleting temporary objects on GCS.')
+                logger.info(f'Deleting temporary objects on GCS.')
                 parallel_execute(func = lambda x: delete_object(bucket_name=GCS_BUCKET_NAME, object_key=x),
                                  args = gcs_uploaded_files,
                                  num_threads = num_threads)
                 
-                print('Done.')
+                logger.info('Done.')
+                logger.exception('Exception occurred.')
                 raise e
 
 
@@ -265,24 +267,31 @@ class DailyStockPriceDataset:
 def sync(concurrency=1) -> None:
     """Executes an incremental sync job."""
     
+    logger.info("Syncing companies data...")
     pse_companies = PSECompanies()
     pse_companies.sync_db()
     
+    logger.info("Syncing price data...")
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset.sync_db(num_threads=concurrency, lookback_days=0)
+    
+    logger.info("Done.")
 
     
 def backfill(concurrency=1) -> None:
     """Executes a complete backfill job."""
     
+    logger.info("Running backfill for companies data...")
     pse_companies = PSECompanies()
     pse_companies.sync_db()
     
+    logger.info("Running backfill for price data...")
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset.sync_db(num_threads=concurrency, 
                           lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
 
-
+    logger.info("Done.")
+    
 if __name__ == '__main__':
         
     sync()

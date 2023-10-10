@@ -7,6 +7,7 @@ import pandas as pd
 import random
 import string
 import os
+import logging
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from typing import List
@@ -28,6 +29,18 @@ load_dotenv('.env')
 GCP_CREDENTIALS_FILE = os.environ.get('GCP_CREDENTIALS_FILE')
 DELTA_TABLE_PATH_PREFIX = os.environ.get('DELTA_TABLE_PATH_PREFIX')
 DEFAULT_CONCURRENCY = 8
+
+
+# Configure logger
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s]: %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 
 # Stop default SparkSession before creating another with custom config
@@ -88,9 +101,9 @@ def delete_folder(folder_path):
 
         # Remove the top-level folder itself
         os.rmdir(folder_path)
-        print(f"Folder '{folder_path}' and its contents have been deleted.")
+        logger.info(f"Folder '{folder_path}' and its contents have been deleted.")
     except Exception as e:
-        print(f"Error: {e}")
+        logger.exception(f"Error: {e}")
 
 
 class PSECompaniesDataset:
@@ -246,7 +259,7 @@ class DailyStockPriceDataset:
             
             # Skip if conditions are satisfied
             if lookback_days==0 and current_end_date==target_end_date:
-                print(f'Data is up-to-date for: {symbol:6s}  |  No new records. Skipping.')
+                logger.info(f'Table is up-to-date:    {symbol:6s}  |  Skipping.')
 
             else:
                 try:
@@ -259,13 +272,13 @@ class DailyStockPriceDataset:
                     # Save to CSV
                     if price_df.shape[0] > 0:
                         price_df.to_csv(f'{job_output_directory}/{symbol}.csv', index=False)
-                        print(f'Fetched price data for: {symbol:6s}  |  Wrote {price_df.shape[0]} records to CSV.')
+                        logger.info(f'Fetched price data for: {symbol:6s}  |  Wrote {price_df.shape[0]} records to CSV.')
                     
                     else:
-                        print(f'Fetched price data for: {symbol:6s}  |  No price updates available. Skipping.')
+                        logger.info(f'Zero records returned:  {symbol:6s}  |  Skipping.')
 
                 except UnknownSymbolException as e:
-                    print(f'Error: Unknown symbol:  {symbol:6s}  |  Skipping.')
+                    logger.warning(f'Error: Unknown symbol:  {symbol:6s}  |  Skipping.')
 
         # Fetch new price data for all symbols
         parallel_execute(func = download_price_updates,
@@ -290,7 +303,7 @@ class DailyStockPriceDataset:
             self._refresh_metadata()
             
         except AnalysisException as e:
-            print('No updates available. Skipping upsert step.')
+            logger.info('No updates available. Skipping upsert step.')
 
         # Clean up temporary CSV files
         delete_folder(job_output_directory)
@@ -299,23 +312,31 @@ class DailyStockPriceDataset:
 def sync(concurrency=DEFAULT_CONCURRENCY) -> None:
     """Executes an incremental sync job."""
     
+    logger.info("Syncing companies data...")
     pse_companies = PSECompaniesDataset()
     pse_companies.sync_table()
     
+    logger.info("Syncing price data...")
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset.sync_table(num_threads=concurrency)
+
+    logger.info("Done.")
     
     
 def backfill(concurrency=DEFAULT_CONCURRENCY) -> None:
     """Executes a complete backfill job."""
     
+    logger.info("Running backfill for companies data...")
     pse_companies = PSECompaniesDataset()
     pse_companies.sync_table()
     
+    logger.info("Running backfill for price data...")
     price_dataset = DailyStockPriceDataset(pse_companies.symbols)
     price_dataset.sync_table(num_threads=concurrency, 
                              lookback_days=365*100)  # Use a very large lookback period (100 years) to extract all available data
-        
+    
+    logger.info("Done.")
+
 
 if __name__ == '__main__':
     

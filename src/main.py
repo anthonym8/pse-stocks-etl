@@ -5,6 +5,8 @@
 
 import argparse
 
+from src import logger
+
 from src.db.postgres.init import create_tables as postgres_initdb
 from src.etl.postgres_sync import sync as postgres_sync
 from src.etl.postgres_sync import backfill as postgres_backfill
@@ -34,6 +36,8 @@ if __name__ == '__main__':
     parser.add_argument('--concurrency', '-c', default=1, type=int, help="The number of threads in parallel to use.")
 
     args = parser.parse_args()
+    
+    logger.info(f"Input args: destination='{args.destination}', action='{args.action}', concurrency='{args.concurrency}'")
     
     
     if args.destination == 'postgres':
