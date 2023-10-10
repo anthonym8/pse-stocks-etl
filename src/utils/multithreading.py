@@ -3,6 +3,7 @@
 
 import threading
 from queue import Queue
+from src import logger
 
 
 def parallel_execute(func, args, num_threads=1, **kwargs):
@@ -43,12 +44,12 @@ def parallel_execute(func, args, num_threads=1, **kwargs):
     # Create queue and fill up with tasks
     queue = Queue()
     for a in args:
-        print('Adding to queue: {}'.format(a))
+        logger.info('Adding to queue: {}'.format(a))
         queue.put(a)
         
     # Create threads
     for i in range(num_threads):
-        print('Creating thread: {}'.format(i+1))
+        logger.info('Creating thread: {}'.format(i+1))
         worker = threading.Thread(target=run_func, args=(queue,))
         worker.setDaemon(True)
         worker.start()
@@ -58,7 +59,7 @@ def parallel_execute(func, args, num_threads=1, **kwargs):
     
     # Check if any exceptions occurred
     if len(caught_exceptions) > 0:
-        print('\n{} errors occurred.'.format(len(caught_exceptions)))
+        logger.warning('\n{} errors occurred.'.format(len(caught_exceptions)))
         raise caught_exceptions[0]
         
     return True
