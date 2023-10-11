@@ -166,7 +166,7 @@ class DailyStockPriceDataset:
             rows_to_insert.append(row_str)
 
             if (len(rows_to_insert) == batch_size) or (idx+1 == n_rows):
-                logger.info(f"  {idx+1} records out of {n_companies} inserted.")
+                logger.info(f"  {idx+1} records out of {n_rows} inserted.")
                 stmt = INSERT_STMT_TEMPLATE.format(tuples = ',\n           '.join(rows_to_insert))
                 query(stmt=stmt, retrieve_result=False)
                 rows_to_insert = []
