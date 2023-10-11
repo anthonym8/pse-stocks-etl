@@ -158,15 +158,15 @@ class DailyStockPriceDataset:
 
         n_rows = df.shape[0]
         rows_to_insert = []
-        for idy in range(n_rows):
+        for idx in range(n_rows):
             p_symbol, p_date, p_open, p_high, p_low, p_close, p_extracted_at = \
-                df.iloc[idy].loc[['symbol','date','open','high','low','close','extracted_at']]
+                df.iloc[idx].loc[['symbol','date','open','high','low','close','extracted_at']]
 
             row_str = f"('{p_symbol}', '{p_date}', {p_open}, {p_high}, {p_low}, {p_close}, '{p_extracted_at}')"
             rows_to_insert.append(row_str)
 
-            if (len(rows_to_insert) == batch_size) or (idy+1 == n_rows):
-                logger.info(f"  {idx+1} records out of {n_companies} inserted.")
+            if (len(rows_to_insert) == batch_size) or (idx+1 == n_rows):
+                logger.info(f"  {idx+1} records out of {n_rows} inserted.")
                 stmt = INSERT_STMT_TEMPLATE.format(tuples = ',\n           '.join(rows_to_insert))
                 query(stmt=stmt, retrieve_result=False)
                 rows_to_insert = []
