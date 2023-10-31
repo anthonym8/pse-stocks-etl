@@ -28,7 +28,7 @@ load_dotenv('.env')
 
 GCP_CREDENTIALS_FILE = os.environ.get('GCP_CREDENTIALS_FILE')
 DELTA_TABLE_PATH_PREFIX = os.environ.get('DELTA_TABLE_PATH_PREFIX')
-DEFAULT_CONCURRENCY = 8
+DEFAULT_CONCURRENCY = 1
 
 
 # Configure logger
