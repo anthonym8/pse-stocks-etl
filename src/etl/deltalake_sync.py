@@ -15,6 +15,7 @@ from typing import List
 from deltalake import DeltaTable
 from deltalake.writer import write_deltalake
 from deltalake.exceptions import TableNotFoundError
+from polars.io.delta import _convert_pa_schema_to_delta
 from src.utils.pse_edge import get_listed_companies, get_stock_data, UnknownSymbolException
 from src.utils.multithreading import parallel_execute
 from src.utils.gcs import list_objects, delete_object
@@ -151,13 +152,6 @@ class DailyStockPriceDataset:
     def sync_table(self, lookback_days : int = 0, freshness_days : int = 1, num_threads : int = 1) -> None:
         """Updates price data for all companies.
         
-        Due to the lack of delete & update functionality in python delta-rs,
-        this method extracts incremental updates from PSE Edge, combines
-        old and new data with deduplication, and overwrites the existing
-        Delta table. Full dataset is fairly small so this is okay.
-        Once deletes and/or updates are added to python delta-rs, this is 
-        subject for updating as well.
-
         Parameters
         ----------
         lookback_days : int, default 0
@@ -234,21 +228,25 @@ class DailyStockPriceDataset:
             # Read CSVs to Polars dataframe
             updates = pl.read_csv(f'{job_output_directory}/*.csv', schema=self.polars_schema)
             
-            # Merge updates in memory
+            # Target table
+            source = updates.to_arrow()
+            delta_schema = _convert_pa_schema_to_delta(source.schema)
+            source = source.cast(delta_schema)
+            
+            # Merge updates
             logger.info('Merging updates...')
-            merge_sql = """
-                SELECT *
-                FROM ( SELECT * FROM daily_stock_price
-                       UNION ALL
-                       SELECT * FROM updates )
-                QUALIFY row_number() OVER (partition by symbol, date order by extracted_at desc) = 1;
-            """
-            updated_table = duckdb.sql(merge_sql).pl()
-
-            # Overwrite Delta table
-            logger.info('Overwriting Delta table...')
-            updated_table.write_delta(self.table_path, storage_options=storage_options, mode='overwrite')
-                
+            (
+                self.delta_table.merge(
+                    source=source,
+                    predicate="s.symbol = t.symbol AND s.date = t.date",
+                    source_alias="s",
+                    target_alias="t",
+                )
+                .when_matched_update_all()
+                .when_not_matched_insert_all()
+                .execute()
+            )
+                            
             # Re-fetch Delta table
             self._refresh_metadata()
 
