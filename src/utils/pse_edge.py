@@ -3,9 +3,10 @@
 # Author: Rey Anthony Masilang
 
 
-import pandas as pd
+import polars as pl
 import bs4 as bs
 import json
+from pandas import read_html, to_datetime
 from requests import Session
 from datetime import datetime
 from typing import List
@@ -67,19 +68,19 @@ class UnknownSymbolException(Exception):
         super().__init__(f"Symbol '{symbol}' was not found in PSE Edge.")
 
 
-def get_listed_companies() -> pd.DataFrame:
+def get_listed_companies() -> pl.DataFrame:
     """Extracts a list of all PSE-listed companies.
     
     Returns
     -------
-    companies_df : pandas.DataFrame
+    companies_df : polars.DataFrame
         A complete list of companies including common details for each.
     
     """
     
     with Session() as s:
         
-        extract_df_list: List[pd.DataFrame] = []
+        extract_df_list: List[pl.DataFrame] = []
         
         # Get first page
         payload = dict(COMPANY_SEARCH_DEFAULT_PAYLOAD)
@@ -87,8 +88,8 @@ def get_listed_companies() -> pd.DataFrame:
         
         r = s.post(COMPANY_SEARCH_URL, data=payload, headers=COMPANY_SEARCH_HEADERS)
         
-        extract_df = pd.read_html(r.text)[0]
-        extract_df['Retrieved At'] = r.headers['Date']
+        extract_df = pl.DataFrame(read_html(r.text)[0])
+        extract_df = extract_df.with_columns(pl.lit(r.headers['Date']).alias('Retrieved At'))
         extract_df_list.append(extract_df)
         
         soup = bs.BeautifulSoup(r.text, 'html5lib')
@@ -97,12 +98,12 @@ def get_listed_companies() -> pd.DataFrame:
         for page_num in range(2, page_count+1):
             payload['pageNo'] = page_num
             r = s.post(COMPANY_SEARCH_URL, data=payload, headers=COMPANY_SEARCH_HEADERS)
-            extract_df = pd.read_html(r.text)[0]
-            extract_df['Retrieved At'] = r.headers['Date']
+            extract_df = pl.DataFrame(read_html(r.text)[0])
+            extract_df = extract_df.with_columns(pl.lit(r.headers['Date']).alias('Retrieved At'))
             extract_df_list.append(extract_df)
 
-    companies_df = pd.concat(extract_df_list, axis=0)
-    companies_df = companies_df.rename(columns={
+    companies_df = pl.concat(extract_df_list, how='vertical')
+    companies_df = companies_df.rename(mapping={
         'Company Name':'company_name',
         'Stock Symbol':'symbol',
         'Sector':'sector',
@@ -110,10 +111,12 @@ def get_listed_companies() -> pd.DataFrame:
         'Listing Date':'listing_date',
         'Retrieved At':'extracted_at'
     })
-    companies_df['listing_date'] = pd.to_datetime(companies_df['listing_date'], utc=True).dt.strftime('%Y-%m-%d')
-    companies_df['extracted_at'] = pd.to_datetime(companies_df['extracted_at'], utc=True).dt.strftime('%Y-%m-%d %H:%M:%S')
-    companies_df['company_name'] = companies_df['company_name'].str.replace('\'','\'\'')
-    companies_df = companies_df[['symbol','company_name','sector','subsector','listing_date','extracted_at']]
+    companies_df = companies_df.with_columns(
+        listing_date = pl.col('listing_date').map_elements(lambda x: to_datetime(x, utc=True).strftime('%Y-%m-%d')).str.to_date(),
+        extracted_at = pl.col('extracted_at').map_elements(lambda x: to_datetime(x, utc=True).strftime('%Y-%m-%d %H:%M:%S')).str.to_datetime(),
+        company_name = pl.col('company_name').map_elements(lambda x: x.replace('\'','\'\''))
+    )
+    companies_df = companies_df.select(['symbol','company_name','sector','subsector','listing_date','extracted_at'])
     
     return companies_df
     
@@ -172,7 +175,7 @@ def get_company_info(symbol: str) -> dict:
         company_info['subsector'] = table_elements[3].text
 
         # Extract listing date
-        company_info['listing_date'] = pd.to_datetime(table_elements[4].text, utc=True).strftime('%Y-%m-%d')
+        company_info['listing_date'] = to_datetime(table_elements[4].text, utc=True).strftime('%Y-%m-%d')
 
     else:
         raise UnknownSymbolException(symbol)
@@ -180,7 +183,7 @@ def get_company_info(symbol: str) -> dict:
     return company_info
 
 
-def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime = None) -> pd.DataFrame:
+def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime = None) -> pl.DataFrame:
     """Extracts daily stock market prices.
     
     Parameters
@@ -198,12 +201,19 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
     
     Returns
     -------
-    prices_df : pandas.DataFrame
+    prices_df : polars.DataFrame
         A DataFrame which contains daily closing prices of the specified stock.
         
     """
     
-    EMPTY_PRICES_DF = pd.DataFrame(columns=['symbol','date','open','high','low','close','extracted_at'])
+    SCHEMA = { 'symbol':pl.Utf8,
+               'date':pl.Date,
+               'open':pl.Float64,
+               'high':pl.Float64,
+               'low':pl.Float64,
+               'close':pl.Float64,
+               'extracted_at':pl.Datetime }
+    EMPTY_PRICES_DF = pl.DataFrame(schema=SCHEMA)
     
     # Search company by symbol
     company_info = get_company_info(symbol)
@@ -219,8 +229,8 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
     payload = {
         'cmpy_id': company_info['company_id'],
         'security_id': company_info['security_id'],
-        'startDate': pd.to_datetime(start_date, utc=True).strftime('%m-%d-%Y'),
-        'endDate': pd.to_datetime(end_date, utc=True).strftime('%m-%d-%Y'),
+        'startDate': to_datetime(start_date, utc=True).strftime('%m-%d-%Y'),
+        'endDate': to_datetime(end_date, utc=True).strftime('%m-%d-%Y'),
     }
 
     # Prepare request headers
@@ -240,22 +250,25 @@ def get_stock_data(symbol: str, start_date: datetime = None, end_date: datetime 
         prices_df = EMPTY_PRICES_DF
 
     else:
-        prices_df = pd.DataFrame(chart_data)
-        prices_df['symbol'] = symbol
-        prices_df['CHART_DATE'] = pd.to_datetime(prices_df['CHART_DATE'], utc=True, 
-                                                 infer_datetime_format=True, format='mixed')
-        prices_df = prices_df.rename(columns={
+        prices_df = pl.DataFrame(chart_data)
+        prices_df = prices_df.rename({
             'OPEN':'open',
             'HIGH':'high',
             'LOW':'low',
             'CLOSE':'close',
             'CHART_DATE':'date'
         })
-        prices_df['date'] = pd.to_datetime(prices_df['date'], utc=True).dt.strftime('%Y-%m-%d')
-        prices_df['extracted_at'] = pd.to_datetime(extracted_at, utc=True).strftime('%Y-%m-%d %H:%M:%S')
-        prices_df = prices_df[['symbol','date','open','high','low','close','extracted_at']]
+        prices_df = prices_df.with_columns(
+            symbol = pl.lit(symbol),
+            date = pl.col('date').map_elements(lambda x: to_datetime(x, utc=True, infer_datetime_format=True, format='mixed').strftime('%Y-%m-%d')).str.to_date(),
+            extracted_at = pl.lit(extracted_at).map_elements(lambda x: to_datetime(x, utc=True).strftime('%Y-%m-%d %H:%M:%S')).str.to_datetime(),
+        )
         
         # Deduplicate records
-        prices_df = prices_df.loc[prices_df.groupby(['date','symbol'])['close'].idxmax()]
+        prices_df = prices_df.with_columns(row_number = pl.col('date').rank(method='ordinal').over('date'))
+        prices_df = prices_df.filter(pl.col('row_number') == 1)
+        
+        # Select columns
+        prices_df = prices_df.select(['symbol','date','open','high','low','close','extracted_at'])
             
     return prices_df
