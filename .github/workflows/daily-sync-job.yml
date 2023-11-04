@@ -52,7 +52,7 @@ jobs:
           python -m src.main \
           --destination postgres \
           --action sync \
-          --concurrency=1
+          --concurrency=4
 
   sync-bigquery:
     runs-on: ubuntu-latest
@@ -101,7 +101,7 @@ jobs:
           python -m src.main \
           --destination bigquery \
           --action sync \
-          --concurrency=1
+          --concurrency=4
 
   sync-deltalake:
     runs-on: ubuntu-latest
@@ -146,7 +146,7 @@ jobs:
           python -m src.main \
           --destination deltalake \
           --action sync \
-          --concurrency=1
+          --concurrency=4
 
   sync-spark-deltalake:
     runs-on: ubuntu-latest
